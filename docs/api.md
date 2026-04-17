@@ -35,7 +35,7 @@ Ważne ograniczenia publicznego surface:
 
 - publicznie tylko binary Falcon: `logn = 9` i `logn = 10`
 - brak publicznych modułów implementacyjnych typu `encoding`, `rng`, `math`, `sampler` czy `params`
-- `hazmat` nie jest częścią domyślnego API i pozostaje za feature `hazmat`
+- `hazmat` nie jest jeszcze wystawiony; wróci później jako osobny feature
 - nonce jest osobnym typem publicznym
 - wire format ma pozostać zgodny z Falcon 2017 / Extra
 

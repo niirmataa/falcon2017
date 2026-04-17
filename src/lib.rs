@@ -4,8 +4,6 @@ mod compression;
 mod encoding;
 mod error;
 mod falcon;
-#[cfg(feature = "hazmat")]
-pub mod hazmat;
 mod math;
 mod params;
 mod rng;
