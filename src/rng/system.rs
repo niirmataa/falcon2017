@@ -1,0 +1,1 @@
+//! System RNG adapter layer.
