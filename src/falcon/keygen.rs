@@ -1,23 +1,263 @@
 //! Falcon key generation pipeline.
 
+use crate::encoding::public_key;
+use crate::error::{Error, Result};
 use crate::math::fft::{
     fft, ifft, poly_add, poly_add_muladj_fft, poly_adj_fft, poly_div_autoadj_fft,
     poly_invnorm2_fft, poly_mul_autoadj_fft, poly_mul_fft, poly_sub,
 };
-use crate::math::fpr::ref_f64::{fpr_of, fpr_rint, fpr_scaled, Fpr};
+use crate::math::fpr::ref_f64::{
+    fpr_add, fpr_div, fpr_lt, fpr_mul, fpr_of, fpr_rint, fpr_scaled, fpr_sqr, Fpr,
+};
 use crate::math::modp::{
     modp_add, modp_montymul, modp_ninv31, modp_norm, modp_r2, modp_rx, modp_set, modp_sub,
 };
-use crate::math::ntt::{modp_intt2, modp_mkgm2, modp_ntt2, QB};
+use crate::math::ntt::{
+    modp_intt2, modp_mkgm2, modp_ntt2, mq_conv_small, mq_div_12289, mq_intt_binary, mq_ntt_binary,
+    QB,
+};
 use crate::math::primes::primes2;
 use crate::math::zint::{
     bitlength, zint_add_scaled_mul_small, zint_bezout, zint_get_top, zint_mod_small_signed,
     zint_mul_small, zint_one_to_plain, zint_rebuild_crt, zint_signed_bit_length, zint_sub_scaled,
 };
+use crate::params::is_public_logn;
+use crate::rng::shake256::ShakeContext;
+use crate::types::{Keypair, PublicKey, SecretKey, SecretKeyInner};
+use rand_core::{CryptoRng, RngCore};
 
 pub(crate) const MAX_BL_SMALL2: [usize; 11] = [1, 1, 2, 2, 4, 7, 14, 27, 53, 106, 212];
 pub(crate) const MAX_BL_LARGE2: [usize; 10] = [2, 2, 5, 7, 12, 22, 42, 80, 157, 310];
 pub(crate) const DEPTH_INT_FG: u32 = 4;
+const GAUSS_1024_12289: [u64; 27] = [
+    1_283_868_770_400_643_928,
+    6_416_574_995_475_331_444,
+    4_078_260_278_032_692_663,
+    2_353_523_259_288_686_585,
+    1_227_179_971_273_316_331,
+    575_931_623_374_121_527,
+    242_543_240_509_105_209,
+    91_437_049_221_049_666,
+    30_799_446_349_977_173,
+    9_255_276_791_179_340,
+    2_478_152_334_826_140,
+    590_642_893_610_164,
+    125_206_034_929_641,
+    23_590_435_911_403,
+    3_948_334_035_941,
+    586_753_615_614,
+    77_391_054_539,
+    9_056_793_210,
+    940_121_950,
+    86_539_696,
+    7_062_824,
+    510_971,
+    32_764,
+    1_862,
+    94,
+    4,
+    0,
+];
+
+struct KeygenShake {
+    inner: ShakeContext,
+}
+
+impl KeygenShake {
+    fn from_seed(seed: &[u8]) -> Self {
+        let mut inner = ShakeContext::shake256();
+        inner.inject(seed);
+        inner.flip();
+        Self { inner }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let mut tmp = [0u8; 8];
+        self.inner.extract(&mut tmp);
+        u64::from_le_bytes(tmp)
+    }
+}
+
+fn poly_small_sqnorm(f: &[i16], logn: u32) -> u32 {
+    let n = 1usize << logn;
+    let mut s = 0u32;
+    let mut ng = 0u32;
+    for &value in f.iter().take(n) {
+        let z = i32::from(value);
+        s = s.wrapping_add((z * z) as u32);
+        ng |= s;
+    }
+    s | 0u32.wrapping_sub(ng >> 31)
+}
+
+fn poly_small_to_fp(dst: &mut [Fpr], src: &[i16], logn: u32) {
+    let n = 1usize << logn;
+    for (d, &s) in dst.iter_mut().zip(src.iter()).take(n) {
+        *d = fpr_of(i64::from(s));
+    }
+}
+
+fn check_ortho_norm(f: &[i16], g: &[i16], logn: u32) -> bool {
+    let n = 1usize << logn;
+    let mut rt1 = vec![fpr_of(0); n];
+    let mut rt2 = vec![fpr_of(0); n];
+    let mut rt3 = vec![fpr_of(0); n >> 1];
+
+    poly_small_to_fp(&mut rt1, f, logn);
+    poly_small_to_fp(&mut rt2, g, logn);
+    fft(&mut rt1, logn);
+    fft(&mut rt2, logn);
+    poly_invnorm2_fft(&mut rt3, &rt1, &rt2, logn);
+    poly_adj_fft(&mut rt1, logn);
+    poly_adj_fft(&mut rt2, logn);
+
+    let q = fpr_of(i64::from(QB));
+    for value in &mut rt1 {
+        *value = fpr_mul(*value, q);
+    }
+    for value in &mut rt2 {
+        *value = fpr_mul(*value, q);
+    }
+    poly_mul_autoadj_fft(&mut rt1, &rt3, logn);
+    poly_mul_autoadj_fft(&mut rt2, &rt3, logn);
+    ifft(&mut rt1, logn);
+    ifft(&mut rt2, logn);
+
+    let mut norm = fpr_of(0);
+    for u in 0..n {
+        norm = fpr_add(norm, fpr_sqr(rt1[u]));
+        norm = fpr_add(norm, fpr_sqr(rt2[u]));
+    }
+    fpr_lt(norm, fpr_div(fpr_of(168_224_121), fpr_of(10_000)))
+}
+
+fn mkgauss(rng: &mut KeygenShake, logn: u32) -> i32 {
+    let mut val = 0i32;
+    for _ in 0..(1usize << (10 - logn)) {
+        let mut r = rng.next_u64();
+        let neg = (r >> 63) as i32;
+        r &= !(1u64 << 63);
+        if r < GAUSS_1024_12289[0] {
+            continue;
+        }
+
+        r = rng.next_u64();
+        r &= !(1u64 << 63);
+        let mut k = 1i32;
+        while GAUSS_1024_12289[k as usize] > r {
+            k += 1;
+        }
+        k *= 1 - (neg << 1);
+        val += k;
+    }
+    val
+}
+
+fn poly_small_mkgauss(rng: &mut KeygenShake, logn: u32) -> Vec<i16> {
+    let n = 1usize << logn;
+    let mut f = vec![0i16; n];
+    let mut mod2 = 0u32;
+    for u in 0..n {
+        loop {
+            let s = mkgauss(rng, logn);
+            if u == n - 1 {
+                if (mod2 ^ ((s as u32) & 1)) == 0 {
+                    continue;
+                }
+            } else {
+                mod2 ^= (s as u32) & 1;
+            }
+            f[u] = s as i16;
+            break;
+        }
+    }
+    f
+}
+
+fn compute_public(f: &[i16], g: &[i16], logn: u32) -> Option<Box<[u16]>> {
+    let n = 1usize << logn;
+    let mut t = vec![0u16; n];
+    let mut h = vec![0u16; n];
+    for u in 0..n {
+        t[u] = mq_conv_small(i32::from(f[u]), QB) as u16;
+        h[u] = mq_conv_small(i32::from(g[u]), QB) as u16;
+    }
+    mq_ntt_binary(&mut h, logn);
+    mq_ntt_binary(&mut t, logn);
+    for u in 0..n {
+        if t[u] == 0 {
+            return None;
+        }
+        h[u] = mq_div_12289(u32::from(h[u]), u32::from(t[u])) as u16;
+    }
+    mq_intt_binary(&mut h, logn);
+    Some(h.into_boxed_slice())
+}
+
+fn poly_i8_from_i16(values: &[i16]) -> Result<Box<[i8]>> {
+    let mut out = Vec::with_capacity(values.len());
+    for &value in values {
+        out.push(i8::try_from(value).map_err(|_| Error::Internal)?);
+    }
+    Ok(out.into_boxed_slice())
+}
+
+fn keygen_ref_from_shake<const LOGN: u32>(rng: &mut KeygenShake) -> Result<Keypair<LOGN>> {
+    if !is_public_logn(LOGN) {
+        return Err(Error::InvalidParameter);
+    }
+
+    loop {
+        let f = poly_small_mkgauss(rng, LOGN);
+        let g = poly_small_mkgauss(rng, LOGN);
+
+        let normf = poly_small_sqnorm(&f, LOGN);
+        let normg = poly_small_sqnorm(&g, LOGN);
+        let norm = normf.wrapping_add(normg) | 0u32.wrapping_sub((normf | normg) >> 31);
+        if norm >= 16_823 {
+            continue;
+        }
+        if !check_ortho_norm(&f, &g, LOGN) {
+            continue;
+        }
+
+        let h = match compute_public(&f, &g, LOGN) {
+            Some(h) => h,
+            None => continue,
+        };
+        let (big_f, big_g) = match solve_ntru(&f, &g, LOGN) {
+            Some(result) => result,
+            None => continue,
+        };
+
+        let public = PublicKey {
+            bytes: public_key::encode(false, LOGN, &h).map_err(|_| Error::Internal)?,
+        };
+        let secret = SecretKey {
+            inner: SecretKeyInner {
+                f: poly_i8_from_i16(&f)?,
+                g: poly_i8_from_i16(&g)?,
+                big_f: poly_i8_from_i16(&big_f)?,
+                big_g: poly_i8_from_i16(&big_g)?,
+            },
+        };
+        return Ok(Keypair { public, secret });
+    }
+}
+
+pub(crate) fn keygen_with_rng<const LOGN: u32>(
+    rng: &mut (impl RngCore + CryptoRng),
+) -> Result<Keypair<LOGN>> {
+    let mut seed = [0u8; 32];
+    rng.try_fill_bytes(&mut seed)
+        .map_err(|_| Error::Randomness)?;
+    keygen_from_seed_material::<LOGN>(&seed)
+}
+
+pub(crate) fn keygen_from_seed_material<const LOGN: u32>(seed: &[u8]) -> Result<Keypair<LOGN>> {
+    let mut rng = KeygenShake::from_seed(seed);
+    keygen_ref_from_shake::<LOGN>(&mut rng)
+}
 
 fn poly_max_bitlength(f: &[u32], flen: usize, fstride: usize, logn: u32) -> u32 {
     let n = 1usize << logn;
@@ -939,8 +1179,57 @@ pub(crate) fn solve_ntru(f: &[i16], g: &[i16], logn: u32) -> Option<(Vec<i16>, V
 
 #[cfg(test)]
 mod tests {
-    use super::solve_ntru;
+    use super::{compute_public, keygen_from_seed_material, solve_ntru};
+    use crate::compression::Compression;
     use crate::math::ntt::QB;
+    use crate::types::{Falcon1024, Falcon512};
+    use rand_core::{CryptoRng, RngCore};
+
+    struct FixedSeedRng {
+        seed: [u8; 32],
+        offset: usize,
+    }
+
+    impl FixedSeedRng {
+        fn new(seed: [u8; 32]) -> Self {
+            Self { seed, offset: 0 }
+        }
+    }
+
+    impl RngCore for FixedSeedRng {
+        fn next_u32(&mut self) -> u32 {
+            let mut tmp = [0u8; 4];
+            self.fill_bytes(&mut tmp);
+            u32::from_le_bytes(tmp)
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            let mut tmp = [0u8; 8];
+            self.fill_bytes(&mut tmp);
+            u64::from_le_bytes(tmp)
+        }
+
+        fn fill_bytes(&mut self, dest: &mut [u8]) {
+            self.try_fill_bytes(dest).expect("fixed seed rng")
+        }
+
+        fn try_fill_bytes(
+            &mut self,
+            dest: &mut [u8],
+        ) -> core::result::Result<(), rand_core::Error> {
+            for byte in dest {
+                *byte = if self.offset < self.seed.len() {
+                    self.seed[self.offset]
+                } else {
+                    0
+                };
+                self.offset += 1;
+            }
+            Ok(())
+        }
+    }
+
+    impl CryptoRng for FixedSeedRng {}
 
     fn negacyclic_mul(a: &[i16], b: &[i16]) -> Vec<i64> {
         let n = a.len();
@@ -957,6 +1246,10 @@ mod tests {
             }
         }
         out
+    }
+
+    fn as_i16(values: &[i8]) -> Vec<i16> {
+        values.iter().map(|&value| i16::from(value)).collect()
     }
 
     #[test]
@@ -999,5 +1292,62 @@ mod tests {
                 assert_eq!(value, 0);
             }
         }
+    }
+
+    #[test]
+    fn falcon512_keygen_matches_seeded_reference_pipeline() {
+        let seed = *b"falcon2017-step15-seed-512-key!!";
+        let expected = keygen_from_seed_material::<9>(&seed).expect("seeded keygen");
+
+        let mut rng = FixedSeedRng::new(seed);
+        let actual = Falcon512::keygen(&mut rng).expect("public keygen");
+
+        assert_eq!(actual.public.to_bytes(), expected.public.to_bytes());
+        assert_eq!(
+            &*actual.secret.to_bytes(Compression::None),
+            &*expected.secret.to_bytes(Compression::None)
+        );
+    }
+
+    #[test]
+    fn falcon1024_keygen_produces_public_matching_secret_and_ntru_equation() {
+        let keypair =
+            keygen_from_seed_material::<10>(b"falcon2017-step15-seed-1024").expect("seeded keygen");
+
+        let f = as_i16(&keypair.secret.inner.f);
+        let g = as_i16(&keypair.secret.inner.g);
+        let big_f = as_i16(&keypair.secret.inner.big_f);
+        let big_g = as_i16(&keypair.secret.inner.big_g);
+        let h = compute_public(&f, &g, 10).expect("public key");
+
+        let decoded =
+            crate::encoding::public_key::decode(keypair.public.to_bytes()).expect("pk decode");
+        assert_eq!(&*decoded.h, &*h);
+
+        let fg = negacyclic_mul(&f, &big_g);
+        let gf = negacyclic_mul(&g, &big_f);
+        for (idx, (&lhs, &rhs)) in fg.iter().zip(gf.iter()).enumerate() {
+            let value = lhs - rhs;
+            if idx == 0 {
+                assert_eq!(value, i64::from(QB));
+            } else {
+                assert_eq!(value, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn falcon1024_keygen_matches_seeded_reference_pipeline() {
+        let seed = *b"falcon2017-step15-seed-1024-key!";
+        let expected = keygen_from_seed_material::<10>(&seed).expect("seeded keygen");
+
+        let mut rng = FixedSeedRng::new(seed);
+        let actual = Falcon1024::keygen(&mut rng).expect("public keygen");
+
+        assert_eq!(actual.public.to_bytes(), expected.public.to_bytes());
+        assert_eq!(
+            &*actual.secret.to_bytes(Compression::None),
+            &*expected.secret.to_bytes(Compression::None)
+        );
     }
 }

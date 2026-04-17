@@ -3,6 +3,7 @@
 use crate::compression::Compression;
 use crate::encoding::secret_key;
 use crate::error::{Error, Result};
+use crate::falcon::keygen;
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
 use rand_core::{CryptoRng, RngCore};
 
@@ -92,27 +93,23 @@ pub(crate) struct ExpandedSecretKeyCtInner<const LOGN: u32> {
 
 impl Falcon512 {
     pub fn keygen(rng: &mut (impl RngCore + CryptoRng)) -> Result<Falcon512Keypair> {
-        let _ = rng;
-        Err(Error::Internal)
+        keygen::keygen_with_rng::<FALCON512_LOGN>(rng)
     }
 
     #[cfg(feature = "deterministic-tests")]
     pub fn keygen_from_seed(seed: &[u8]) -> Result<Falcon512Keypair> {
-        let _ = seed;
-        Err(Error::Internal)
+        keygen::keygen_from_seed_material::<FALCON512_LOGN>(seed)
     }
 }
 
 impl Falcon1024 {
     pub fn keygen(rng: &mut (impl RngCore + CryptoRng)) -> Result<Falcon1024Keypair> {
-        let _ = rng;
-        Err(Error::Internal)
+        keygen::keygen_with_rng::<FALCON1024_LOGN>(rng)
     }
 
     #[cfg(feature = "deterministic-tests")]
     pub fn keygen_from_seed(seed: &[u8]) -> Result<Falcon1024Keypair> {
-        let _ = seed;
-        Err(Error::Internal)
+        keygen::keygen_from_seed_material::<FALCON1024_LOGN>(seed)
     }
 }
 
