@@ -3,14 +3,9 @@
 use crate::math::modp::{
     modp_add, modp_div, modp_montymul, modp_ninv31, modp_r, modp_r2, modp_sub,
 };
-use crate::math::primes::{SmallPrime, PRIMES2};
+use crate::math::primes::primes2;
 
 const MASK31: u32 = 0x7FFF_FFFF;
-
-#[inline]
-fn primes2() -> &'static [SmallPrime] {
-    &PRIMES2
-}
 
 pub(crate) fn zint_add(a: &mut [u32], b: &[u32]) -> u32 {
     let mut cc = 0u32;

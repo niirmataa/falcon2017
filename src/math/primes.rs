@@ -9,13 +9,19 @@ pub(crate) struct SmallPrime {
 
 include!("primes_table.rs");
 
+#[inline]
+pub(crate) fn primes2() -> &'static [SmallPrime] {
+    &PRIMES2
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{SmallPrime, PRIMES2};
+    use super::{primes2, SmallPrime, PRIMES2};
 
     #[test]
     fn primes2_shape_matches_reference() {
         assert_eq!(PRIMES2.len(), 522);
+        assert_eq!(primes2().len(), PRIMES2.len());
         assert_eq!(
             PRIMES2[0],
             SmallPrime {

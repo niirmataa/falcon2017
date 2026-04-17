@@ -9,7 +9,7 @@ use crate::math::modp::{
     modp_add, modp_montymul, modp_ninv31, modp_norm, modp_r2, modp_rx, modp_set, modp_sub,
 };
 use crate::math::ntt::{modp_intt2, modp_mkgm2, modp_ntt2, QB};
-use crate::math::primes::{SmallPrime, PRIMES2};
+use crate::math::primes::primes2;
 use crate::math::zint::{
     bitlength, zint_add_scaled_mul_small, zint_bezout, zint_get_top, zint_mod_small_signed,
     zint_mul_small, zint_one_to_plain, zint_rebuild_crt, zint_signed_bit_length, zint_sub_scaled,
@@ -18,11 +18,6 @@ use crate::math::zint::{
 pub(crate) const MAX_BL_SMALL2: [usize; 11] = [1, 1, 2, 2, 4, 7, 14, 27, 53, 106, 212];
 pub(crate) const MAX_BL_LARGE2: [usize; 10] = [2, 2, 5, 7, 12, 22, 42, 80, 157, 310];
 pub(crate) const DEPTH_INT_FG: u32 = 4;
-
-#[inline]
-fn primes2() -> &'static [SmallPrime] {
-    &PRIMES2
-}
 
 fn poly_max_bitlength(f: &[u32], flen: usize, fstride: usize, logn: u32) -> u32 {
     let n = 1usize << logn;
