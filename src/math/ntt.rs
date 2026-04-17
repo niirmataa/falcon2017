@@ -1,8 +1,6 @@
 //! Number-theoretic transform helpers.
 
-use crate::math::modp::{
-    modp_add, modp_div, modp_montymul, modp_r, modp_r2, modp_sub,
-};
+use crate::math::modp::{modp_add, modp_div, modp_montymul, modp_r, modp_r2, modp_sub};
 
 include!("mq_binary_tables.rs");
 
@@ -16,14 +14,7 @@ fn bit_reverse_10(x: usize) -> usize {
     ((x as u16).reverse_bits() >> 6) as usize
 }
 
-pub(crate) fn modp_mkgm2(
-    gm: &mut [u32],
-    igm: &mut [u32],
-    logn: u32,
-    mut g: u32,
-    p: u32,
-    p0i: u32,
-) {
+pub(crate) fn modp_mkgm2(gm: &mut [u32], igm: &mut [u32], logn: u32, mut g: u32, p: u32, p0i: u32) {
     assert!(logn <= 10);
     let n = 1usize << logn;
     assert!(gm.len() >= n);
@@ -48,14 +39,7 @@ pub(crate) fn modp_mkgm2(
     }
 }
 
-pub(crate) fn modp_ntt2_ext(
-    a: &mut [u32],
-    stride: usize,
-    gm: &[u32],
-    logn: u32,
-    p: u32,
-    p0i: u32,
-) {
+pub(crate) fn modp_ntt2_ext(a: &mut [u32], stride: usize, gm: &[u32], logn: u32, p: u32, p0i: u32) {
     if logn == 0 {
         return;
     }
@@ -331,7 +315,9 @@ mod tests {
     fn mq_binary_ntt_roundtrip_restores_input() {
         let logn = 4;
         let n = 1usize << logn;
-        let mut poly: Vec<u16> = (0..n).map(|i| ((i * 19 + 5) % QB as usize) as u16).collect();
+        let mut poly: Vec<u16> = (0..n)
+            .map(|i| ((i * 19 + 5) % QB as usize) as u16)
+            .collect();
         let original = poly.clone();
         mq_ntt_binary(&mut poly, logn);
         mq_intt_binary(&mut poly, logn);
@@ -352,8 +338,12 @@ mod tests {
     fn mq_poly_helpers_match_naive_pointwise_ops() {
         let logn = 4;
         let n = 1usize << logn;
-        let mut f: Vec<u16> = (0..n).map(|i| ((i * 13 + 7) % QB as usize) as u16).collect();
-        let g: Vec<u16> = (0..n).map(|i| ((i * 29 + 3) % QB as usize) as u16).collect();
+        let mut f: Vec<u16> = (0..n)
+            .map(|i| ((i * 13 + 7) % QB as usize) as u16)
+            .collect();
+        let g: Vec<u16> = (0..n)
+            .map(|i| ((i * 29 + 3) % QB as usize) as u16)
+            .collect();
 
         let mut expected = f.clone();
         mq_poly_tomonty(&mut expected, logn);
@@ -427,15 +417,17 @@ mod tests {
     fn mq_binary_ntt_matches_reference_vector() {
         let logn = 4;
         let n = 1usize << logn;
-        let mut poly: Vec<u16> = (0..n).map(|i| ((i * 19 + 5) % QB as usize) as u16).collect();
+        let mut poly: Vec<u16> = (0..n)
+            .map(|i| ((i * 19 + 5) % QB as usize) as u16)
+            .collect();
         mq_ntt_binary(&mut poly, logn);
 
         assert_eq!(mq_div_12289(3210, 7654), 9_226);
         assert_eq!(
             &poly[..n],
             &[
-                4_374, 10_685, 5_745, 8_299, 2_514, 566, 9_990, 5_038, 10_604, 6_665, 2_484,
-                3_629, 990, 1_017, 6_736, 6_767,
+                4_374, 10_685, 5_745, 8_299, 2_514, 566, 9_990, 5_038, 10_604, 6_665, 2_484, 3_629,
+                990, 1_017, 6_736, 6_767,
             ]
         );
     }

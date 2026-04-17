@@ -11,7 +11,7 @@ include!("primes_table.rs");
 
 #[cfg(test)]
 mod tests {
-    use super::{PRIMES2, SmallPrime};
+    use super::{SmallPrime, PRIMES2};
 
     #[test]
     fn primes2_shape_matches_reference() {

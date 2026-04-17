@@ -1,6 +1,7 @@
 //! Public API types.
 
 use crate::compression::Compression;
+use crate::encoding::secret_key;
 use crate::error::{Error, Result};
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
 use rand_core::{CryptoRng, RngCore};
@@ -117,14 +118,31 @@ impl Falcon1024 {
 
 impl<const LOGN: u32> SecretKey<LOGN> {
     pub fn to_bytes(&self, comp: Compression) -> Box<[u8]> {
-        let _ = comp;
-        let _ = self;
-        Vec::new().into_boxed_slice()
+        secret_key::encode(
+            false,
+            comp,
+            LOGN,
+            &self.inner.f,
+            &self.inner.g,
+            &self.inner.big_f,
+            &self.inner.big_g,
+        )
+        .expect("SecretKey always holds a baseline-compatible binary key")
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let _ = bytes;
-        Err(Error::Internal)
+        let decoded = secret_key::decode(bytes)?;
+        if decoded.ternary || decoded.logn != LOGN {
+            return Err(Error::InvalidEncoding);
+        }
+        Ok(Self {
+            inner: SecretKeyInner {
+                f: poly_i8_from_i16(&decoded.f)?,
+                g: poly_i8_from_i16(&decoded.g)?,
+                big_f: poly_i8_from_i16(&decoded.big_f)?,
+                big_g: poly_i8_from_i16(&decoded.big_g)?,
+            },
+        })
     }
 
     pub fn derive_public(&self) -> Result<PublicKey<LOGN>> {
@@ -157,6 +175,15 @@ impl<const LOGN: u32> SecretKey<LOGN> {
         let _ = self;
         Err(Error::Internal)
     }
+}
+
+fn poly_i8_from_i16(values: &[i16]) -> Result<Box<[i8]>> {
+    let mut out = Vec::with_capacity(values.len());
+    for &value in values {
+        let value = i8::try_from(value).map_err(|_| Error::InvalidEncoding)?;
+        out.push(value);
+    }
+    Ok(out.into_boxed_slice())
 }
 
 impl<const LOGN: u32> ExpandedSecretKeyCt<LOGN> {
@@ -263,5 +290,55 @@ impl<const LOGN: u32> Drop for SecretKeyInner<LOGN> {
 impl<const LOGN: u32> Drop for ExpandedSecretKeyCtInner<LOGN> {
     fn drop(&mut self) {
         self.storage.as_mut().zeroize();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SecretKey;
+    use crate::compression::Compression;
+
+    const REF_SECRET_KEY_NONE: [u8; 129] = [
+        4, 0, 10, 0, 11, 255, 245, 0, 24, 255, 237, 255, 252, 255, 235, 0, 27, 255, 230, 0, 6, 255,
+        239, 255, 255, 0, 39, 0, 5, 0, 18, 255, 244, 0, 24, 0, 25, 255, 252, 255, 241, 0, 6, 0, 14,
+        0, 28, 255, 253, 0, 20, 0, 27, 0, 53, 0, 17, 0, 1, 255, 215, 255, 218, 0, 31, 255, 242, 0,
+        51, 255, 225, 255, 195, 0, 13, 0, 26, 0, 55, 0, 43, 255, 232, 255, 248, 255, 255, 0, 33, 0,
+        3, 0, 34, 255, 232, 0, 51, 0, 55, 0, 20, 255, 231, 0, 61, 0, 52, 255, 255, 255, 214, 255,
+        255, 0, 49, 255, 242, 0, 36, 255, 229, 0, 10, 0, 5, 0, 3, 255, 192,
+    ];
+
+    #[test]
+    fn secret_key_from_bytes_matches_reference_none_encoding() {
+        let sk = SecretKey::<4>::from_bytes(&REF_SECRET_KEY_NONE).expect("reference bytes");
+
+        assert_eq!(
+            &*sk.inner.f,
+            &[10, 11, -11, 24, -19, -4, -21, 27, -26, 6, -17, -1, 39, 5, 18, -12]
+        );
+        assert_eq!(
+            &*sk.inner.g,
+            &[24, 25, -4, -15, 6, 14, 28, -3, 20, 27, 53, 17, 1, -41, -38, 31]
+        );
+        assert_eq!(
+            &*sk.inner.big_f,
+            &[-14, 51, -31, -61, 13, 26, 55, 43, -24, -8, -1, 33, 3, 34, -24, 51]
+        );
+        assert_eq!(
+            &*sk.inner.big_g,
+            &[55, 20, -25, 61, 52, -1, -42, -1, 49, -14, 36, -27, 10, 5, 3, -64]
+        );
+        assert_eq!(&*sk.to_bytes(Compression::None), &REF_SECRET_KEY_NONE);
+    }
+
+    #[test]
+    fn secret_key_static_roundtrip_preserves_reference_key() {
+        let sk = SecretKey::<4>::from_bytes(&REF_SECRET_KEY_NONE).expect("reference bytes");
+        let encoded = sk.to_bytes(Compression::Static);
+        let decoded = SecretKey::<4>::from_bytes(&encoded).expect("static roundtrip");
+
+        assert_eq!(&*decoded.inner.f, &*sk.inner.f);
+        assert_eq!(&*decoded.inner.g, &*sk.inner.g);
+        assert_eq!(&*decoded.inner.big_f, &*sk.inner.big_f);
+        assert_eq!(&*decoded.inner.big_g, &*sk.inner.big_g);
     }
 }
