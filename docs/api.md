@@ -31,6 +31,13 @@ Publiczne metody obecne na tym etapie:
 - `Nonce::{as_bytes, from_bytes}`
 - `DetachedSignature::{nonce, body_bytes}`
 
+Model weryfikacji:
+
+- `PublicKey::verify_detached()` istnieje dla jednorazowego sprawdzenia podpisu.
+- Docelową ścieżką dla wielokrotnej weryfikacji jest `PublicKey::prepare()` -> `PreparedPublicKey`, a następnie `PreparedPublicKey::verify_detached()` albo `PreparedPublicKey::verifier(&Nonce)`.
+- `Verifier` nie ma publicznych konstruktorów; jest tworzony wyłącznie przez `PreparedPublicKey::verifier()`.
+- Przed bramką `C1` nie dodajemy żadnych skrótów ani metod wygodowych ponad literalny zakres z sekcji 3 `GENERAL.md`.
+
 Ważne ograniczenia publicznego surface:
 
 - publicznie tylko binary Falcon: `logn = 9` i `logn = 10`
