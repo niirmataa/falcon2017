@@ -1,0 +1,25 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Fuzzing
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+
+# Benchmarks
+/criterion
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
