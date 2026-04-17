@@ -53,4 +53,18 @@ Wymuszone już teraz zasady dla typów sekretów:
 - pola wewnętrzne sekretów są niepubliczne
 - secret-bearing storage jest czyszczone przez `Drop + zeroize`
 
-Na tym etapie większość metod nadal ma charakter placeholderów i zwraca `Error::Internal`; pełna semantyka dochodzi w kolejnych krokach portu.
+Metody już działające po Kroku 16:
+
+- `Falcon512::keygen()` i `Falcon1024::keygen()`
+- `Falcon512::keygen_from_seed()` i `Falcon1024::keygen_from_seed()` za feature `deterministic-tests`
+- `SecretKey::{to_bytes, from_bytes}`
+- `PublicKey::{to_bytes, from_bytes, verify_detached}`
+
+Placeholderami pozostają jeszcze m.in.:
+
+- `SecretKey::derive_public()`
+- `SecretKey::sign_ref()` i `SecretKey::sign_ref_with_external_nonce()`
+- `ExpandedSecretKeyCt::*`
+- `PublicKey::prepare()`
+- `PreparedPublicKey::*`
+- `Verifier::finalize()`

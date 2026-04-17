@@ -4,6 +4,7 @@ use crate::compression::Compression;
 use crate::encoding::secret_key;
 use crate::error::{Error, Result};
 use crate::falcon::keygen;
+use crate::falcon::verify;
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
 use rand_core::{CryptoRng, RngCore};
 
@@ -212,8 +213,7 @@ impl<const LOGN: u32> PublicKey<LOGN> {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let _ = bytes;
-        Err(Error::Internal)
+        verify::public_key_from_bytes(bytes)
     }
 
     pub fn prepare(&self) -> Result<PreparedPublicKey<LOGN>> {
@@ -222,8 +222,7 @@ impl<const LOGN: u32> PublicKey<LOGN> {
     }
 
     pub fn verify_detached(&self, msg: &[u8], sig: &DetachedSignature<LOGN>) -> Result<()> {
-        let _ = (self, msg, sig);
-        Err(Error::Internal)
+        verify::verify_detached(self, msg, sig)
     }
 }
 
