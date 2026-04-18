@@ -3,10 +3,12 @@
 use crate::compression::Compression;
 use crate::encoding::secret_key;
 use crate::error::{Error, Result};
+use crate::falcon::expand_ct;
 use crate::falcon::keygen;
 use crate::falcon::sign_ref;
 use crate::falcon::verify;
 use crate::falcon::workspace::{KeygenWorkspace, SignRefWorkspace, VerifyWorkspace};
+use crate::math::fpr::soft::Fpr as SoftFpr;
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
 use crate::rng::shake256::ShakeContext;
 use rand_core::{CryptoRng, RngCore};
@@ -55,6 +57,7 @@ pub struct SecretKey<const LOGN: u32> {
 
 /// Expanded secret key for the strict constant-time backend.
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct ExpandedSecretKeyCt<const LOGN: u32> {
     pub(crate) inner: ExpandedSecretKeyCtInner<LOGN>,
 }
@@ -89,8 +92,13 @@ pub(crate) struct SecretKeyInner<const LOGN: u32> {
     pub(crate) big_g: Box<[i8]>,
 }
 
+#[derive(Debug)]
 pub(crate) struct ExpandedSecretKeyCtInner<const LOGN: u32> {
-    pub(crate) storage: Box<[u8]>,
+    pub(crate) b00: Box<[SoftFpr]>,
+    pub(crate) b01: Box<[SoftFpr]>,
+    pub(crate) b10: Box<[SoftFpr]>,
+    pub(crate) b11: Box<[SoftFpr]>,
+    pub(crate) tree: Box<[SoftFpr]>,
 }
 
 impl Falcon512 {
@@ -219,8 +227,7 @@ impl<const LOGN: u32> SecretKey<LOGN> {
     }
 
     pub fn expand_ct_strict(&self) -> Result<ExpandedSecretKeyCt<LOGN>> {
-        let _ = self;
-        Err(Error::Internal)
+        expand_ct::expand_ct_strict(self)
     }
 }
 
@@ -343,9 +350,20 @@ impl<const LOGN: u32> Drop for SecretKeyInner<LOGN> {
 }
 
 #[cfg(feature = "zeroize")]
+fn zeroize_soft_fpr(buf: &mut [SoftFpr]) {
+    for value in buf {
+        *value = SoftFpr::from_bits(0);
+    }
+}
+
+#[cfg(feature = "zeroize")]
 impl<const LOGN: u32> Drop for ExpandedSecretKeyCtInner<LOGN> {
     fn drop(&mut self) {
-        self.storage.as_mut().zeroize();
+        zeroize_soft_fpr(self.b00.as_mut());
+        zeroize_soft_fpr(self.b01.as_mut());
+        zeroize_soft_fpr(self.b10.as_mut());
+        zeroize_soft_fpr(self.b11.as_mut());
+        zeroize_soft_fpr(self.tree.as_mut());
     }
 }
 

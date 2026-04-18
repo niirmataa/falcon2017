@@ -239,6 +239,15 @@ fn prepare_signing_key_into<'a, const LOGN: u32>(
     ExpandedRefKey { logn: LOGN, data }
 }
 
+pub(crate) fn prepare_signing_key_bits_ref<const LOGN: u32>(secret: &SecretKey<LOGN>) -> Vec<u64> {
+    let n = 1usize << LOGN;
+    let mut data = vec![Fpr::new(0.0); expanded_ref_key_len(LOGN)];
+    let mut gram = vec![Fpr::new(0.0); 4 * n];
+    let mut tmp = vec![Fpr::new(0.0); 4 * n];
+    prepare_signing_key_into(secret, &mut data, &mut gram, &mut tmp);
+    data.into_iter().map(|value| value.v.to_bits()).collect()
+}
+
 fn ffsampling_fft<S: FnMut(Fpr, Fpr) -> i32>(
     sampler: &mut S,
     z: (&mut [Fpr], &mut [Fpr]),

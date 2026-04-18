@@ -94,6 +94,13 @@ Stan po Kroku 22:
 - secret-bearing storage nie ma publicznych pól
 - `Drop + zeroize` obejmuje secret key storage, expanded key storage, reference workspaces oraz runtime state używany przez signer/keygen
 
+Stan po Kroku 24:
+
+- `SecretKey::expand_ct_strict()` zwraca `ExpandedSecretKeyCt<LOGN>` dla publicznych parametrów
+- `ExpandedSecretKeyCtInner` przechowuje `b00`, `b01`, `b10`, `b11` i `tree` jako niepubliczne
+  bufory `FprSoft`
+- expanded-key storage jest objęty `Drop + zeroize`
+
 Placeholderami pozostają jeszcze m.in.:
 
-- `ExpandedSecretKeyCt::*`
+- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}`
