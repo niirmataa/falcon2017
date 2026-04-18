@@ -1,44 +1,60 @@
 //! Expanded-key generation for the strict constant-time backend.
 
 use crate::error::{Error, Result};
-use crate::falcon::sign_ref::prepare_signing_key_bits_ref;
+use crate::falcon::sign_ref::prepare_signing_key_bits_ref_into;
 use crate::math::fpr::soft::Fpr;
 use crate::params::is_public_logn;
 use crate::types::{ExpandedSecretKeyCt, ExpandedSecretKeyCtInner, SecretKey};
+#[cfg(feature = "zeroize")]
+use zeroize::Zeroize;
 
 const fn ffldl_treesize(logn: u32) -> usize {
     ((logn + 1) as usize) << logn
 }
 
-fn soft_slice_from_bits(bits: &[u64]) -> Box<[Fpr]> {
-    bits.iter()
-        .copied()
-        .map(Fpr::from_bits)
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
+fn alloc_soft_slice(len: usize) -> Box<[Fpr]> {
+    vec![Fpr::from_bits(0); len].into_boxed_slice()
+}
+
+fn copy_bits_to_soft(dst: &mut [Fpr], bits: &[u64]) {
+    assert_eq!(dst.len(), bits.len());
+    for (dst, bits) in dst.iter_mut().zip(bits.iter().copied()) {
+        *dst = Fpr::from_bits(bits);
+    }
 }
 
 fn expand_ct_inner<const LOGN: u32>(secret: &SecretKey<LOGN>) -> ExpandedSecretKeyCtInner<LOGN> {
     let n = 1usize << LOGN;
     let tree_len = ffldl_treesize(LOGN);
+    let expected_len = 4 * n + tree_len;
+    let mut prepared_bits = vec![0u64; expected_len].into_boxed_slice();
     // Preserve the historical Falcon/Extra LDL/ffLDL semantics exactly, but
     // store the expanded key in the integer-backed `FprSoft` representation.
-    let prepared = prepare_signing_key_bits_ref(secret);
-    let expected_len = 4 * n + tree_len;
-    assert_eq!(prepared.len(), expected_len);
+    prepare_signing_key_bits_ref_into(secret, &mut prepared_bits);
 
-    let (b00, rest) = prepared.split_at(n);
+    let (b00, rest) = prepared_bits.split_at(n);
     let (b01, rest) = rest.split_at(n);
     let (b10, rest) = rest.split_at(n);
     let (b11, tree) = rest.split_at(n);
 
-    ExpandedSecretKeyCtInner {
-        b00: soft_slice_from_bits(b00),
-        b01: soft_slice_from_bits(b01),
-        b10: soft_slice_from_bits(b10),
-        b11: soft_slice_from_bits(b11),
-        tree: soft_slice_from_bits(tree),
-    }
+    let mut expanded = ExpandedSecretKeyCtInner {
+        b00: alloc_soft_slice(n),
+        b01: alloc_soft_slice(n),
+        b10: alloc_soft_slice(n),
+        b11: alloc_soft_slice(n),
+        tree: alloc_soft_slice(tree_len),
+    };
+
+    copy_bits_to_soft(&mut expanded.b00, b00);
+    copy_bits_to_soft(&mut expanded.b01, b01);
+    copy_bits_to_soft(&mut expanded.b10, b10);
+    copy_bits_to_soft(&mut expanded.b11, b11);
+    copy_bits_to_soft(&mut expanded.tree, tree);
+
+    #[cfg(feature = "zeroize")]
+    prepared_bits.as_mut().zeroize();
+
+    expanded
 }
 
 pub(crate) fn expand_ct_strict<const LOGN: u32>(

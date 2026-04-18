@@ -63,6 +63,13 @@ fn expanded_ref_key_len(logn: u32) -> usize {
     4 * n + ffldl_treesize(logn)
 }
 
+#[cfg(feature = "zeroize")]
+fn zeroize_ref_fpr(buf: &mut [Fpr]) {
+    for value in buf {
+        *value = Fpr::new(0.0);
+    }
+}
+
 fn smallints_to_fpr(dst: &mut [Fpr], src: &[i8], logn: u32) {
     let n = 1usize << logn;
     assert_eq!(dst.len(), n);
@@ -239,13 +246,31 @@ fn prepare_signing_key_into<'a, const LOGN: u32>(
     ExpandedRefKey { logn: LOGN, data }
 }
 
-pub(crate) fn prepare_signing_key_bits_ref<const LOGN: u32>(secret: &SecretKey<LOGN>) -> Vec<u64> {
+pub(crate) fn prepare_signing_key_bits_ref_into<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    out: &mut [u64],
+) {
     let n = 1usize << LOGN;
     let mut data = vec![Fpr::new(0.0); expanded_ref_key_len(LOGN)];
     let mut gram = vec![Fpr::new(0.0); 4 * n];
     let mut tmp = vec![Fpr::new(0.0); 4 * n];
     prepare_signing_key_into(secret, &mut data, &mut gram, &mut tmp);
-    data.into_iter().map(|value| value.v.to_bits()).collect()
+    assert_eq!(out.len(), data.len());
+    for (dst, value) in out.iter_mut().zip(data.iter()) {
+        *dst = value.v.to_bits();
+    }
+    #[cfg(feature = "zeroize")]
+    {
+        zeroize_ref_fpr(&mut data);
+        zeroize_ref_fpr(&mut gram);
+        zeroize_ref_fpr(&mut tmp);
+    }
+}
+
+pub(crate) fn prepare_signing_key_bits_ref<const LOGN: u32>(secret: &SecretKey<LOGN>) -> Vec<u64> {
+    let mut out = vec![0u64; expanded_ref_key_len(LOGN)];
+    prepare_signing_key_bits_ref_into(secret, &mut out);
+    out
 }
 
 fn ffsampling_fft<S: FnMut(Fpr, Fpr) -> i32>(
@@ -378,7 +403,7 @@ fn do_sign_binary_in(
     }
 }
 
-fn seed_prng_stream(rng: &mut (impl RngCore + CryptoRng)) -> Result<ShakeContext> {
+pub(crate) fn seed_prng_stream(rng: &mut (impl RngCore + CryptoRng)) -> Result<ShakeContext> {
     let mut seed = [0u8; 32];
     rng.try_fill_bytes(&mut seed)
         .map_err(|_| Error::Randomness)?;
