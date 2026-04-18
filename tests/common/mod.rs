@@ -86,6 +86,23 @@ pub fn negacyclic_mul(lhs: &[i16], rhs: &[i16]) -> Vec<i64> {
     out
 }
 
+#[cfg(feature = "deterministic-tests")]
+pub fn differential_bytes(tag: &[u8], index: u32, len: usize) -> Vec<u8> {
+    assert!(!tag.is_empty(), "differential tag must not be empty");
+    let mut out = vec![0u8; len];
+    let mut state = index
+        .wrapping_mul(0x9E37_79B9)
+        .wrapping_add((tag.len() as u32).wrapping_mul(0x85EB_CA6B))
+        ^ 0xA5A5_5A5A;
+    for (i, byte) in out.iter_mut().enumerate() {
+        state ^= u32::from(tag[i % tag.len()]);
+        state = state.rotate_left(7).wrapping_mul(0x7FEB_352D);
+        state = state.wrapping_add(0x846C_A68B ^ (i as u32));
+        *byte = (state >> ((i & 3) * 8)) as u8;
+    }
+    out
+}
+
 pub struct FixedSeedRng {
     seed: [u8; 32],
     offset: usize,

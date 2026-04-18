@@ -12,7 +12,9 @@ Reference coverage already present in-tree:
 - NTRU vectors,
 - keygen/sign/verify roundtrips for Falcon512 and Falcon1024,
 - encode/decode and malformed-input regressions,
-- differential verify and derive-public checks against the frozen C baseline.
+- differential verify and derive-public checks against the frozen C baseline,
+- deterministic differential campaigns covering 1024 seeded keygen cases and 1024 seeded
+  verify cases across the public Falcon512/Falcon1024 parameter sets.
 
 ## Strict CT Coverage
 
@@ -40,3 +42,14 @@ Coverage already implemented for the `ct_strict` track:
 Coverage intentionally deferred to later strict steps:
 - broader side-channel validation and larger-scale statistical campaigns for the now-runtime
   integer-only `ct_strict` executor.
+
+## Deterministic Differential Campaign
+
+When `deterministic-tests` is enabled, the campaign-level differential checks are:
+- `tests/differential_keygen.rs`: 512 seeded Falcon512 keygens plus 512 seeded Falcon1024
+  keygens, each compared byte-for-byte against the frozen C helper for public key, secret key,
+  decode roundtrip, and `derive_public()`,
+- `tests/differential_verify.rs`: 512 seeded Falcon512 signatures plus 512 seeded Falcon1024
+  signatures, with varied message lengths, varied external nonce lengths, and alternating
+  `Compression::{None, Static}`; every Rust-produced signature must verify both in Rust and in
+  the frozen C verifier.

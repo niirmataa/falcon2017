@@ -17,9 +17,16 @@ mod math {
 mod hash_to_point_impl;
 
 use common::c_reference;
+#[cfg(feature = "deterministic-tests")]
+use common::{differential_bytes, FixedRng};
 use common::{extract_c_kat_table, extract_c_string, hex_to_bytes, C_TEST_FALCON};
+#[cfg(feature = "deterministic-tests")]
+use falcon2017::{Compression, Falcon1024, Falcon512};
 use falcon2017::{Nonce, PublicKey};
 use hash_to_point_impl::hash_message_to_point_binary;
+
+#[cfg(feature = "deterministic-tests")]
+const VERIFY_CASES_PER_LOGN: u32 = 512;
 
 #[test]
 fn verify_reference_c_known_signatures_for_512_and_1024() {
@@ -40,6 +47,78 @@ fn hash_to_point_matches_reference_c_for_binary_512_and_1024() {
     let c0_1024 = c_reference::hash_to_point_binary(10, nonce_1024, msg_1024);
     let rust_1024 = hash_message_to_point_binary(nonce_1024, msg_1024, 10);
     assert_eq!(&*rust_1024, c0_1024.as_slice());
+}
+
+#[cfg(feature = "deterministic-tests")]
+#[test]
+fn rust_signatures_verify_in_reference_c_across_falcon512_campaign() {
+    for case in 0..VERIFY_CASES_PER_LOGN {
+        let seed = differential_bytes(b"step-r1-verify-key-512", case, 32);
+        let keypair = Falcon512::keygen_from_seed(&seed).expect("seeded keygen");
+        let msg = differential_bytes(b"step-r1-verify-msg-512", case, 1 + (case % 257) as usize);
+        let nonce_bytes =
+            differential_bytes(b"step-r1-verify-nonce-512", case, 1 + (case % 64) as usize);
+        let nonce = Nonce::from_bytes(&nonce_bytes);
+        let rng_bytes = differential_bytes(b"step-r1-verify-rng-512", case, 96);
+        let mut rng = FixedRng::new(&rng_bytes);
+        let compression = if (case & 1) == 0 {
+            Compression::None
+        } else {
+            Compression::Static
+        };
+        let sig = keypair
+            .secret
+            .sign_ref_with_external_nonce(&msg, nonce.clone(), compression, &mut rng)
+            .expect("sign ref");
+
+        keypair
+            .public
+            .verify_detached(&msg, &sig)
+            .expect("rust verify");
+        let status = c_reference::verify(
+            keypair.public.to_bytes(),
+            nonce.as_bytes(),
+            &msg,
+            sig.body_bytes(),
+        );
+        assert_eq!(status, 1, "Falcon512 C verify mismatch for case {case}");
+    }
+}
+
+#[cfg(feature = "deterministic-tests")]
+#[test]
+fn rust_signatures_verify_in_reference_c_across_falcon1024_campaign() {
+    for case in 0..VERIFY_CASES_PER_LOGN {
+        let seed = differential_bytes(b"step-r1-verify-key-1024", case, 32);
+        let keypair = Falcon1024::keygen_from_seed(&seed).expect("seeded keygen");
+        let msg = differential_bytes(b"step-r1-verify-msg-1024", case, 1 + (case % 257) as usize);
+        let nonce_bytes =
+            differential_bytes(b"step-r1-verify-nonce-1024", case, 1 + (case % 64) as usize);
+        let nonce = Nonce::from_bytes(&nonce_bytes);
+        let rng_bytes = differential_bytes(b"step-r1-verify-rng-1024", case, 96);
+        let mut rng = FixedRng::new(&rng_bytes);
+        let compression = if (case & 1) == 0 {
+            Compression::None
+        } else {
+            Compression::Static
+        };
+        let sig = keypair
+            .secret
+            .sign_ref_with_external_nonce(&msg, nonce.clone(), compression, &mut rng)
+            .expect("sign ref");
+
+        keypair
+            .public
+            .verify_detached(&msg, &sig)
+            .expect("rust verify");
+        let status = c_reference::verify(
+            keypair.public.to_bytes(),
+            nonce.as_bytes(),
+            &msg,
+            sig.body_bytes(),
+        );
+        assert_eq!(status, 1, "Falcon1024 C verify mismatch for case {case}");
+    }
 }
 
 fn verify_kat_table(logn: u32, pk_name: &str, kat_name: &str) {

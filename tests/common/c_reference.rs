@@ -6,11 +6,13 @@ use std::sync::OnceLock;
 
 use super::hex_to_bytes;
 
+#[cfg(feature = "deterministic-tests")]
 pub struct KeygenOutput {
     pub sk: Vec<u8>,
     pub pk: Vec<u8>,
 }
 
+#[cfg(feature = "deterministic-tests")]
 pub fn keygen(logn: u32, seed: &[u8], comp: u32) -> KeygenOutput {
     let output = run_helper(&[
         "keygen",
@@ -45,6 +47,20 @@ pub fn hash_to_point_binary(logn: u32, nonce: &[u8], msg: &[u8]) -> Vec<u16> {
             u16::from_str_radix(text, 16).expect("u16 hex")
         })
         .collect()
+}
+
+#[cfg(feature = "deterministic-tests")]
+pub fn verify(pk: &[u8], nonce: &[u8], msg: &[u8], sig_body: &[u8]) -> i32 {
+    let output = run_helper(&[
+        "verify",
+        &to_hex(pk),
+        &to_hex(nonce),
+        &to_hex(msg),
+        &to_hex(sig_body),
+    ]);
+    parse_string_field(&output, "STATUS")
+        .parse::<i32>()
+        .expect("verify status")
 }
 
 fn run_helper(args: &[&str]) -> String {

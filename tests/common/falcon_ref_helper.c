@@ -136,6 +136,40 @@ cmd_hash_to_point_binary(unsigned logn, const char *nonce_hex, const char *msg_h
 	free(c0);
 }
 
+static void
+cmd_verify(const char *pk_hex, const char *nonce_hex,
+	const char *msg_hex, const char *sig_hex)
+{
+	falcon_vrfy *fv;
+	size_t pk_len, nonce_len, msg_len, sig_len;
+	uint8_t *pk, *nonce, *msg, *sig;
+	int status;
+
+	pk = hex_to_bytes(pk_hex, &pk_len);
+	nonce = hex_to_bytes(nonce_hex, &nonce_len);
+	msg = hex_to_bytes(msg_hex, &msg_len);
+	sig = hex_to_bytes(sig_hex, &sig_len);
+	fv = falcon_vrfy_new();
+	if (fv == NULL) {
+		fprintf(stderr, "falcon_vrfy_new failed\n");
+		exit(EXIT_FAILURE);
+	}
+	if (!falcon_vrfy_set_public_key(fv, pk, pk_len)) {
+		fprintf(stderr, "falcon_vrfy_set_public_key failed\n");
+		exit(EXIT_FAILURE);
+	}
+	falcon_vrfy_start(fv, nonce, nonce_len);
+	falcon_vrfy_update(fv, msg, msg_len);
+	status = falcon_vrfy_verify(fv, sig, sig_len);
+	printf("STATUS=%d\n", status);
+
+	falcon_vrfy_free(fv);
+	free(pk);
+	free(nonce);
+	free(msg);
+	free(sig);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -159,6 +193,15 @@ main(int argc, char *argv[])
 		}
 		cmd_hash_to_point_binary((unsigned)strtoul(argv[2], NULL, 10),
 			argv[3], argv[4]);
+		return EXIT_SUCCESS;
+	}
+	if (strcmp(argv[1], "verify") == 0) {
+		if (argc != 6) {
+			fprintf(stderr,
+				"usage: verify <pk_hex> <nonce_hex> <msg_hex> <sig_hex>\n");
+			return EXIT_FAILURE;
+		}
+		cmd_verify(argv[2], argv[3], argv[4], argv[5]);
 		return EXIT_SUCCESS;
 	}
 	fprintf(stderr, "unknown command: %s\n", argv[1]);
