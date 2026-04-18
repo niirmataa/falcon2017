@@ -1,1 +1,743 @@
-//! Placeholder for the strict constant-time soft floating-point backend.
+//! Integer-only binary64 emulation for the strict constant-time backend.
+
+use core::cmp::Ordering;
+
+const SIGN_MASK: u64 = 1u64 << 63;
+const EXP_MASK: u64 = 0x7ff0_0000_0000_0000;
+const FRAC_MASK: u64 = 0x000f_ffff_ffff_ffff;
+
+const POS_ZERO_BITS: u64 = 0x0000_0000_0000_0000;
+const POS_INF_BITS: u64 = 0x7ff0_0000_0000_0000;
+const ONE_BITS: u64 = 0x3ff0_0000_0000_0000;
+const TWO_BITS: u64 = 0x4000_0000_0000_0000;
+
+const P1_BITS: u64 = 0x3fc5_5555_5555_553e;
+const P2_BITS: u64 = 0xbf66_c16c_16be_bd93;
+const P3_BITS: u64 = 0x3f11_566a_af25_de2c;
+const P4_BITS: u64 = 0xbebb_bd41_c5d2_6bf1;
+const P5_BITS: u64 = 0x3e66_3769_72be_a4d0;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct FprSoft {
+    bits: u64,
+}
+
+pub(crate) type Fpr = FprSoft;
+
+#[derive(Clone, Copy, Debug)]
+struct Decoded {
+    sign: bool,
+    sig: u64,
+    exp: i32,
+}
+
+impl FprSoft {
+    pub(crate) const fn from_bits(bits: u64) -> Self {
+        Self { bits }
+    }
+
+    pub(crate) const fn bits(self) -> u64 {
+        self.bits
+    }
+
+    const fn sign(self) -> bool {
+        (self.bits & SIGN_MASK) != 0
+    }
+
+    const fn is_zero(self) -> bool {
+        (self.bits & !SIGN_MASK) == 0
+    }
+}
+
+const FPR_ZERO: Fpr = Fpr::from_bits(POS_ZERO_BITS);
+const FPR_ONE: Fpr = Fpr::from_bits(ONE_BITS);
+const FPR_TWO: Fpr = Fpr::from_bits(TWO_BITS);
+
+pub(crate) const FPR_LOG2: Fpr = Fpr::from_bits(0x3fe6_2e42_fefa_39ef);
+pub(crate) const FPR_P55: Fpr = Fpr::from_bits(0x4360_0000_0000_0000);
+pub(crate) const FPR_P63: Fpr = Fpr::from_bits(0x43e0_0000_0000_0000);
+pub(crate) const FPR_P64: Fpr = Fpr::from_bits(0x43f0_0000_0000_0000);
+
+pub(crate) const FPR_W1R: Fpr = Fpr::from_bits(0x3fe0_0000_0000_0000);
+pub(crate) const FPR_W1I: Fpr = Fpr::from_bits(0x3feb_b67a_e858_4caa);
+pub(crate) const FPR_W2R: Fpr = Fpr::from_bits(0xbfe0_0000_0000_0000);
+pub(crate) const FPR_W2I: Fpr = Fpr::from_bits(0x3feb_b67a_e858_4caa);
+pub(crate) const FPR_W4R: Fpr = Fpr::from_bits(0xbfe0_0000_0000_0000);
+pub(crate) const FPR_W4I: Fpr = Fpr::from_bits(0xbfeb_b67a_e858_4caa);
+pub(crate) const FPR_W5R: Fpr = Fpr::from_bits(0x3fe0_0000_0000_0000);
+pub(crate) const FPR_W5I: Fpr = Fpr::from_bits(0xbfeb_b67a_e858_4caa);
+pub(crate) const FPR_IW1I: Fpr = Fpr::from_bits(0x3ff2_79a7_4590_331c);
+
+const FPR_P1: Fpr = Fpr::from_bits(P1_BITS);
+const FPR_P2: Fpr = Fpr::from_bits(P2_BITS);
+const FPR_P3: Fpr = Fpr::from_bits(P3_BITS);
+const FPR_P4: Fpr = Fpr::from_bits(P4_BITS);
+const FPR_P5: Fpr = Fpr::from_bits(P5_BITS);
+
+fn abs_i64_to_u64(i: i64) -> u64 {
+    if i < 0 {
+        (i as u64).wrapping_neg()
+    } else {
+        i as u64
+    }
+}
+
+fn shr_sticky_u64(x: u64, shift: u32) -> u64 {
+    if shift == 0 {
+        return x;
+    }
+    if shift >= 64 {
+        return u64::from(x != 0);
+    }
+    let mask = (1u64 << shift) - 1;
+    let lost = x & mask;
+    let hi = x >> shift;
+    hi | u64::from(lost != 0)
+}
+
+fn shr_sticky_u128(x: u128, shift: u32) -> u128 {
+    if shift == 0 {
+        return x;
+    }
+    if shift >= 128 {
+        return u128::from(x != 0);
+    }
+    let mask = (1u128 << shift) - 1;
+    let lost = x & mask;
+    let hi = x >> shift;
+    hi | u128::from(lost != 0)
+}
+
+fn round_shift_right_even_u64(x: u64, shift: u32) -> u64 {
+    if shift == 0 {
+        return x;
+    }
+    if shift >= 64 {
+        return 0;
+    }
+    let hi = x >> shift;
+    let mask = (1u64 << shift) - 1;
+    let lo = x & mask;
+    let half = 1u64 << (shift - 1);
+    if lo > half || (lo == half && (hi & 1) != 0) {
+        hi + 1
+    } else {
+        hi
+    }
+}
+
+fn decode(x: Fpr) -> Decoded {
+    let sign = x.sign();
+    let exp_bits = ((x.bits() & EXP_MASK) >> 52) as i32;
+    let frac = x.bits() & FRAC_MASK;
+    if exp_bits == 0 {
+        if frac == 0 {
+            Decoded {
+                sign,
+                sig: 0,
+                exp: 0,
+            }
+        } else {
+            Decoded {
+                sign,
+                sig: frac,
+                exp: -1074,
+            }
+        }
+    } else {
+        Decoded {
+            sign,
+            sig: (1u64 << 52) | frac,
+            exp: exp_bits - 1075,
+        }
+    }
+}
+
+fn normalize53(mut d: Decoded) -> Decoded {
+    if d.sig == 0 {
+        return d;
+    }
+    let top = 63 - d.sig.leading_zeros() as i32;
+    let shift = 52 - top;
+    d.sig <<= shift as u32;
+    d.exp -= shift;
+    d
+}
+
+fn cmp_abs_decoded(x: Decoded, y: Decoded) -> Ordering {
+    match (x.sig == 0, y.sig == 0) {
+        (true, true) => Ordering::Equal,
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => {
+            if x.exp != y.exp {
+                x.exp.cmp(&y.exp)
+            } else {
+                x.sig.cmp(&y.sig)
+            }
+        }
+    }
+}
+
+fn round_pack(sign: bool, mut exp2: i32, mut sig_ext: u64) -> Fpr {
+    if sig_ext == 0 {
+        return FPR_ZERO;
+    }
+
+    while sig_ext >= (1u64 << 56) {
+        sig_ext = shr_sticky_u64(sig_ext, 1);
+        exp2 += 1;
+    }
+    while sig_ext < (1u64 << 55) {
+        sig_ext <<= 1;
+        exp2 -= 1;
+    }
+
+    let mut e = exp2 + 55;
+    if e > 1023 {
+        return Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS);
+    }
+
+    if e >= -1022 {
+        let mut mant = sig_ext >> 3;
+        let rem = sig_ext & 7;
+        if rem > 4 || (rem == 4 && (mant & 1) != 0) {
+            mant += 1;
+        }
+        if mant >= (1u64 << 53) {
+            mant >>= 1;
+            e += 1;
+            if e > 1023 {
+                return Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS);
+            }
+        }
+        let frac = mant & FRAC_MASK;
+        let exp_bits = ((e + 1023) as u64) << 52;
+        return Fpr::from_bits((u64::from(sign) << 63) | exp_bits | frac);
+    }
+
+    let shift = (-1074 - exp2) as u32;
+    let frac = round_shift_right_even_u64(sig_ext, shift);
+    if frac == 0 {
+        return FPR_ZERO;
+    }
+    if frac >= (1u64 << 52) {
+        return Fpr::from_bits((u64::from(sign) << 63) | (1u64 << 52));
+    }
+    Fpr::from_bits((u64::from(sign) << 63) | frac)
+}
+
+fn add_decoded(x: Decoded, y: Decoded) -> Fpr {
+    let x = normalize53(x);
+    let y = normalize53(y);
+
+    if x.sign == y.sign {
+        let mut sx = x.sig << 3;
+        let mut sy = y.sig << 3;
+        let mut exp2 = x.exp - 3;
+        if x.exp > y.exp {
+            sy = shr_sticky_u64(sy, (x.exp - y.exp) as u32);
+        } else if y.exp > x.exp {
+            sx = shr_sticky_u64(sx, (y.exp - x.exp) as u32);
+            exp2 = y.exp - 3;
+        }
+        round_pack(x.sign, exp2, sx + sy)
+    } else {
+        match cmp_abs_decoded(x, y) {
+            Ordering::Equal => FPR_ZERO,
+            Ordering::Greater => {
+                let sx = x.sig << 3;
+                let mut sy = y.sig << 3;
+                let exp2 = x.exp - 3;
+                if x.exp > y.exp {
+                    sy = shr_sticky_u64(sy, (x.exp - y.exp) as u32);
+                }
+                round_pack(x.sign, exp2, sx - sy)
+            }
+            Ordering::Less => {
+                let mut sx = x.sig << 3;
+                let sy = y.sig << 3;
+                let exp2 = y.exp - 3;
+                if y.exp > x.exp {
+                    sx = shr_sticky_u64(sx, (y.exp - x.exp) as u32);
+                }
+                round_pack(y.sign, exp2, sy - sx)
+            }
+        }
+    }
+}
+
+fn isqrt_u128(n: u128) -> u128 {
+    let mut op = n;
+    let mut res = 0u128;
+    let mut one = 1u128 << 126;
+    while one > op {
+        one >>= 2;
+    }
+    while one != 0 {
+        if op >= res + one {
+            op -= res + one;
+            res = (res >> 1) + one;
+        } else {
+            res >>= 1;
+        }
+        one >>= 2;
+    }
+    res
+}
+
+pub(crate) fn fpr_of(i: i64) -> Fpr {
+    round_pack(i < 0, 0, abs_i64_to_u64(i))
+}
+
+pub(crate) fn fpr_scaled(i: i64, sc: i32) -> Fpr {
+    round_pack(i < 0, sc, abs_i64_to_u64(i))
+}
+
+pub(crate) fn fpr_inverse_of(i: i64) -> Fpr {
+    fpr_div(FPR_ONE, fpr_of(i))
+}
+
+pub(crate) fn fpr_rint(x: Fpr) -> i64 {
+    let d = decode(x);
+    if d.sig == 0 {
+        return 0;
+    }
+    if d.exp >= 0 {
+        let mag = (d.sig as u128) << d.exp as u32;
+        return if d.sign {
+            if mag >= (1u128 << 63) {
+                i64::MIN
+            } else {
+                -(mag as i64)
+            }
+        } else if mag > i64::MAX as u128 {
+            i64::MAX
+        } else {
+            mag as i64
+        };
+    }
+
+    let shift = (-d.exp) as u32;
+    if shift >= 64 {
+        return 0;
+    }
+    let int_part = d.sig >> shift;
+    let mask = (1u64 << shift) - 1;
+    let rem = d.sig & mask;
+    let half = 1u64 << (shift - 1);
+    let mut mag = int_part as u128;
+    if rem > half || (rem == half && (mag & 1) != 0) {
+        mag += 1;
+    }
+
+    if d.sign {
+        if mag >= (1u128 << 63) {
+            i64::MIN
+        } else {
+            -(mag as i64)
+        }
+    } else if mag > i64::MAX as u128 {
+        i64::MAX
+    } else {
+        mag as i64
+    }
+}
+
+pub(crate) fn fpr_floor(x: Fpr) -> i64 {
+    let d = decode(x);
+    if d.sig == 0 {
+        return 0;
+    }
+    if d.exp >= 0 {
+        let mag = (d.sig as u128) << d.exp as u32;
+        return if d.sign {
+            if mag >= (1u128 << 63) {
+                i64::MIN
+            } else {
+                -(mag as i64)
+            }
+        } else if mag > i64::MAX as u128 {
+            i64::MAX
+        } else {
+            mag as i64
+        };
+    }
+
+    let shift = (-d.exp) as u32;
+    if shift >= 64 {
+        return if d.sign { -1 } else { 0 };
+    }
+    let int_part = d.sig >> shift;
+    let mask = (1u64 << shift) - 1;
+    let frac = d.sig & mask;
+    let mag = int_part as u128 + u128::from(d.sign && frac != 0);
+
+    if d.sign {
+        if mag >= (1u128 << 63) {
+            i64::MIN
+        } else {
+            -(mag as i64)
+        }
+    } else if mag > i64::MAX as u128 {
+        i64::MAX
+    } else {
+        mag as i64
+    }
+}
+
+pub(crate) fn fpr_add(x: Fpr, y: Fpr) -> Fpr {
+    if x.is_zero() && y.is_zero() {
+        return if x.sign() && y.sign() {
+            Fpr::from_bits(SIGN_MASK)
+        } else {
+            FPR_ZERO
+        };
+    }
+    let dx = decode(x);
+    let dy = decode(y);
+    if dx.sig == 0 {
+        return y;
+    }
+    if dy.sig == 0 {
+        return x;
+    }
+    add_decoded(dx, dy)
+}
+
+pub(crate) fn fpr_sub(x: Fpr, y: Fpr) -> Fpr {
+    if x.is_zero() && y.is_zero() {
+        return if x.sign() && !y.sign() {
+            Fpr::from_bits(SIGN_MASK)
+        } else {
+            FPR_ZERO
+        };
+    }
+    add_decoded(
+        decode(x),
+        Decoded {
+            sign: !y.sign(),
+            ..decode(y)
+        },
+    )
+}
+
+pub(crate) fn fpr_neg(x: Fpr) -> Fpr {
+    Fpr::from_bits(x.bits() ^ SIGN_MASK)
+}
+
+pub(crate) fn fpr_half(x: Fpr) -> Fpr {
+    let d = decode(x);
+    if d.sig == 0 {
+        return x;
+    }
+    round_pack(d.sign, d.exp - 1, d.sig)
+}
+
+pub(crate) fn fpr_double(x: Fpr) -> Fpr {
+    let d = decode(x);
+    if d.sig == 0 {
+        return x;
+    }
+    round_pack(d.sign, d.exp + 1, d.sig)
+}
+
+pub(crate) fn fpr_mul(x: Fpr, y: Fpr) -> Fpr {
+    let dx = normalize53(decode(x));
+    let dy = normalize53(decode(y));
+    let sign = dx.sign ^ dy.sign;
+    if dx.sig == 0 || dy.sig == 0 {
+        return Fpr::from_bits(u64::from(sign) << 63);
+    }
+
+    let prod = (dx.sig as u128) * (dy.sig as u128);
+    let shift = if prod >= (1u128 << 105) { 50 } else { 49 };
+    let sig_ext = shr_sticky_u128(prod, shift) as u64;
+    round_pack(sign, dx.exp + dy.exp + shift as i32, sig_ext)
+}
+
+pub(crate) fn fpr_sqr(x: Fpr) -> Fpr {
+    fpr_mul(x, x)
+}
+
+pub(crate) fn fpr_inv(x: Fpr) -> Fpr {
+    fpr_div(FPR_ONE, x)
+}
+
+pub(crate) fn fpr_div(x: Fpr, y: Fpr) -> Fpr {
+    let dx = normalize53(decode(x));
+    let dy = normalize53(decode(y));
+    let sign = dx.sign ^ dy.sign;
+    if dx.sig == 0 {
+        return Fpr::from_bits(u64::from(sign) << 63);
+    }
+    if dy.sig == 0 {
+        return Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS);
+    }
+
+    let shift = if dx.sig >= dy.sig { 55 } else { 56 };
+    let num = (dx.sig as u128) << shift;
+    let q = num / (dy.sig as u128);
+    let r = num % (dy.sig as u128);
+    let mut sig_ext = q as u64;
+    if r != 0 {
+        sig_ext |= 1;
+    }
+    round_pack(sign, dx.exp - dy.exp - shift as i32, sig_ext)
+}
+
+pub(crate) fn fpr_sqrt(x: Fpr) -> Fpr {
+    let dx = normalize53(decode(x));
+    if dx.sig == 0 {
+        return x;
+    }
+    if dx.sign {
+        return FPR_ZERO;
+    }
+
+    let mut sig = dx.sig;
+    let mut exp = dx.exp;
+    if (exp & 1) != 0 {
+        sig <<= 1;
+        exp -= 1;
+    }
+
+    let num = (sig as u128) << 58;
+    let mut root = isqrt_u128(num);
+    if root * root != num {
+        root |= 1;
+    }
+    round_pack(false, (exp >> 1) - 29, root as u64)
+}
+
+pub(crate) fn fpr_max(x: Fpr, y: Fpr) -> Fpr {
+    if x.is_zero() && y.is_zero() {
+        FPR_ZERO
+    } else if fpr_lt(x, y) {
+        y
+    } else {
+        x
+    }
+}
+
+pub(crate) fn fpr_lt(x: Fpr, y: Fpr) -> bool {
+    if x.is_zero() && y.is_zero() {
+        return false;
+    }
+    if x.sign() != y.sign() {
+        return x.sign();
+    }
+    let ord = cmp_abs_decoded(normalize53(decode(x)), normalize53(decode(y)));
+    if x.sign() {
+        ord == Ordering::Greater
+    } else {
+        ord == Ordering::Less
+    }
+}
+
+pub(crate) fn fpr_exp_small(x: Fpr) -> Fpr {
+    let mut s = fpr_half(x);
+    let t = fpr_sqr(s);
+    let c = fpr_sub(
+        s,
+        fpr_mul(
+            t,
+            fpr_add(
+                FPR_P1,
+                fpr_mul(
+                    t,
+                    fpr_add(
+                        FPR_P2,
+                        fpr_mul(
+                            t,
+                            fpr_add(FPR_P3, fpr_mul(t, fpr_add(FPR_P4, fpr_mul(t, FPR_P5)))),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    );
+    s = fpr_sub(
+        FPR_ONE,
+        fpr_sub(fpr_div(fpr_mul(s, c), fpr_sub(c, FPR_TWO)), s),
+    );
+    fpr_sqr(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        fpr_add, fpr_div, fpr_double, fpr_exp_small, fpr_floor, fpr_half, fpr_inv, fpr_inverse_of,
+        fpr_lt, fpr_max, fpr_mul, fpr_neg, fpr_of, fpr_rint, fpr_scaled, fpr_sqr, fpr_sqrt,
+        fpr_sub, Fpr, FPR_IW1I, FPR_LOG2, FPR_P55, FPR_P63, FPR_P64, FPR_W1I, FPR_W1R, FPR_W2I,
+        FPR_W2R, FPR_W4I, FPR_W4R, FPR_W5I, FPR_W5R,
+    };
+    use crate::math::fpr::ref_f64;
+
+    fn f64_of(x: Fpr) -> f64 {
+        f64::from_bits(x.bits())
+    }
+
+    fn from_f64(x: f64) -> Fpr {
+        Fpr::from_bits(x.to_bits())
+    }
+
+    #[test]
+    fn scalar_constants_match_reference_bits() {
+        assert_eq!(FPR_LOG2.bits(), 0x3fe6_2e42_fefa_39ef);
+        assert_eq!(FPR_P55.bits(), 0x4360_0000_0000_0000);
+        assert_eq!(FPR_P63.bits(), 0x43e0_0000_0000_0000);
+        assert_eq!(FPR_P64.bits(), 0x43f0_0000_0000_0000);
+        assert_eq!(FPR_W1R.bits(), 0x3fe0_0000_0000_0000);
+        assert_eq!(FPR_W1I.bits(), 0x3feb_b67a_e858_4caa);
+        assert_eq!(FPR_W2R.bits(), 0xbfe0_0000_0000_0000);
+        assert_eq!(FPR_W2I.bits(), 0x3feb_b67a_e858_4caa);
+        assert_eq!(FPR_W4R.bits(), 0xbfe0_0000_0000_0000);
+        assert_eq!(FPR_W4I.bits(), 0xbfeb_b67a_e858_4caa);
+        assert_eq!(FPR_W5R.bits(), 0x3fe0_0000_0000_0000);
+        assert_eq!(FPR_W5I.bits(), 0xbfeb_b67a_e858_4caa);
+        assert_eq!(FPR_IW1I.bits(), 0x3ff2_79a7_4590_331c);
+    }
+
+    #[test]
+    fn integer_conversions_match_native_binary64() {
+        let ints = [
+            i64::MIN,
+            -9_223_372_036_854_775_000,
+            -1_048_577,
+            -17,
+            -3,
+            -1,
+            0,
+            1,
+            3,
+            17,
+            1_048_577,
+            9_223_372_036_854_775_000,
+            i64::MAX,
+        ];
+        for i in ints {
+            assert_eq!(fpr_of(i).bits(), (i as f64).to_bits(), "i={i}");
+        }
+
+        let cases = [
+            (-17, -17),
+            (-17, -3),
+            (-17, 0),
+            (-17, 19),
+            (3, -7),
+            (3, -1),
+            (3, 0),
+            (3, 9),
+            (1_048_577, -12),
+            (1_048_577, 0),
+            (1_048_577, 12),
+        ];
+        for (i, sc) in cases {
+            let expected = (i as f64) * 2.0f64.powi(sc);
+            assert_eq!(
+                fpr_scaled(i, sc).bits(),
+                expected.to_bits(),
+                "i={i}, sc={sc}"
+            );
+        }
+    }
+
+    #[test]
+    fn arithmetic_matches_native_binary64_on_fixed_vectors() {
+        let vals = [
+            -1.0e100, -123456.75, -17.5, -3.0, -0.5, -0.0, 0.0, 0.5, 1.0, 1.25, 3.5, 17.75,
+            123456.75, 1.0e100,
+        ];
+
+        for x in vals {
+            let sx = from_f64(x);
+            assert_eq!(fpr_neg(sx).bits(), (-x).to_bits(), "neg {x}");
+            assert_eq!(fpr_half(sx).bits(), (x * 0.5).to_bits(), "half {x}");
+            assert_eq!(fpr_double(sx).bits(), (x + x).to_bits(), "double {x}");
+            assert_eq!(fpr_sqr(sx).bits(), (x * x).to_bits(), "sqr {x}");
+            if x != 0.0 {
+                assert_eq!(fpr_inv(sx).bits(), (1.0 / x).to_bits(), "inv {x}");
+            }
+        }
+
+        for x in vals {
+            for y in vals {
+                let sx = from_f64(x);
+                let sy = from_f64(y);
+                assert_eq!(fpr_add(sx, sy).bits(), (x + y).to_bits(), "add {x} {y}");
+                assert_eq!(fpr_sub(sx, sy).bits(), (x - y).to_bits(), "sub {x} {y}");
+                assert_eq!(fpr_mul(sx, sy).bits(), (x * y).to_bits(), "mul {x} {y}");
+                if y != 0.0 {
+                    assert_eq!(fpr_div(sx, sy).bits(), (x / y).to_bits(), "div {x} {y}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sqrt_matches_native_binary64() {
+        let vals = [0.0, 0.25, 0.5, 1.0, 2.0, 3.0, 81.0, 1.0e-20, 1.0e20];
+        for x in vals {
+            let sx = from_f64(x);
+            assert_eq!(fpr_sqrt(sx).bits(), x.sqrt().to_bits(), "sqrt {x}");
+        }
+    }
+
+    #[test]
+    fn rounding_matches_reference_semantics() {
+        let vals = [
+            -10.75, -3.99, -3.5, -3.49, -2.5, -0.75, -0.5, -0.49, 0.0, 0.49, 0.5, 0.75, 2.5, 3.49,
+            3.5, 3.99, 10.75,
+        ];
+        for x in vals {
+            let sx = from_f64(x);
+            assert_eq!(fpr_rint(sx), x.round_ties_even() as i64, "rint {x}");
+            assert_eq!(fpr_floor(sx), x.floor() as i64, "floor {x}");
+        }
+        assert_eq!(fpr_inverse_of(8).bits(), 0.125f64.to_bits());
+    }
+
+    #[test]
+    fn ordering_and_max_match_native_behavior() {
+        let vals = [-17.5, -0.0, 0.0, 0.25, 0.5, 1.0, 9.0];
+        for x in vals {
+            for y in vals {
+                let sx = from_f64(x);
+                let sy = from_f64(y);
+                assert_eq!(fpr_lt(sx, sy), x < y, "lt {x} {y}");
+                let expected = if x == 0.0 && y == 0.0 { 0.0 } else { x.max(y) };
+                assert_eq!(
+                    f64_of(fpr_max(sx, sy)).to_bits(),
+                    expected.to_bits(),
+                    "max {x} {y}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn exp_small_matches_ref_backend() {
+        let samples = [
+            -f64_of(FPR_LOG2),
+            -0.625,
+            -0.5,
+            -0.25,
+            -0.125,
+            -0.0625,
+            0.0,
+            0.0625,
+            0.125,
+            0.25,
+            0.5,
+            0.625,
+            f64_of(FPR_LOG2),
+        ];
+
+        for x in samples {
+            let soft = fpr_exp_small(from_f64(x));
+            let reference = ref_f64::fpr_exp_small(ref_f64::fpr(x));
+            assert_eq!(soft.bits(), reference.v.to_bits(), "exp_small {x}");
+        }
+    }
+}
