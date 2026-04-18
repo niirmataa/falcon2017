@@ -4,6 +4,7 @@ use crate::compression::Compression;
 use crate::encoding::secret_key;
 use crate::error::{Error, Result};
 use crate::falcon::keygen;
+use crate::falcon::sign_ref;
 use crate::falcon::verify;
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
 use rand_core::{CryptoRng, RngCore};
@@ -154,8 +155,7 @@ impl<const LOGN: u32> SecretKey<LOGN> {
         comp: Compression,
         rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<DetachedSignature<LOGN>> {
-        let _ = (self, msg, comp, rng);
-        Err(Error::Internal)
+        sign_ref::sign_ref(self, msg, comp, rng)
     }
 
     pub fn sign_ref_with_external_nonce(
@@ -165,8 +165,7 @@ impl<const LOGN: u32> SecretKey<LOGN> {
         comp: Compression,
         rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<DetachedSignature<LOGN>> {
-        let _ = (self, msg, nonce, comp, rng);
-        Err(Error::Internal)
+        sign_ref::sign_ref_with_external_nonce(self, msg, nonce, comp, rng)
     }
 
     pub fn expand_ct_strict(&self) -> Result<ExpandedSecretKeyCt<LOGN>> {
