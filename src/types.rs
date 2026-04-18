@@ -5,6 +5,7 @@ use crate::encoding::secret_key;
 use crate::error::{Error, Result};
 use crate::falcon::expand_ct;
 use crate::falcon::keygen;
+use crate::falcon::sign_ct_strict as sign_ct_strict_backend;
 use crate::falcon::sign_ref;
 use crate::falcon::verify;
 use crate::falcon::workspace::{KeygenWorkspace, SignRefWorkspace, VerifyWorkspace};
@@ -57,7 +58,6 @@ pub struct SecretKey<const LOGN: u32> {
 
 /// Expanded secret key for the strict constant-time backend.
 #[allow(dead_code)]
-#[derive(Debug)]
 pub struct ExpandedSecretKeyCt<const LOGN: u32> {
     pub(crate) inner: ExpandedSecretKeyCtInner<LOGN>,
 }
@@ -92,7 +92,6 @@ pub(crate) struct SecretKeyInner<const LOGN: u32> {
     pub(crate) big_g: Box<[i8]>,
 }
 
-#[derive(Debug)]
 pub(crate) struct ExpandedSecretKeyCtInner<const LOGN: u32> {
     pub(crate) b00: Box<[SoftFpr]>,
     pub(crate) b01: Box<[SoftFpr]>,
@@ -247,8 +246,7 @@ impl<const LOGN: u32> ExpandedSecretKeyCt<LOGN> {
         comp: Compression,
         rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<DetachedSignature<LOGN>> {
-        let _ = (self, msg, comp, rng);
-        Err(Error::Internal)
+        sign_ct_strict_backend::sign_ct_strict(self, msg, comp, rng)
     }
 
     pub fn sign_ct_strict_with_external_nonce(
@@ -258,8 +256,7 @@ impl<const LOGN: u32> ExpandedSecretKeyCt<LOGN> {
         comp: Compression,
         rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<DetachedSignature<LOGN>> {
-        let _ = (self, msg, nonce, comp, rng);
-        Err(Error::Internal)
+        sign_ct_strict_backend::sign_ct_strict_with_external_nonce(self, msg, nonce, comp, rng)
     }
 }
 

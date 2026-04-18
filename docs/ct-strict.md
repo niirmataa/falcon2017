@@ -39,3 +39,39 @@ Weryfikacja Kroku 24:
 - smoke-test w `tests/ct_consistency.rs` sprawdza publiczne `expand_ct_strict()` dla 512 i 1024
   oraz odrzucenie niepublicznego `logn`,
 - `cargo test --features std,ref-f64,ct-strict,soft-fpr` przechodzi na zielono.
+
+## Krok 25
+
+Stan po Kroku 25:
+- `src/sampler/sign_ct_strict.rs` implementuje wariant `SAMPLER_CDF=1` i `CT_BEREXP=1`,
+- `gaussian0_sampler_ct()` zawsze zużywa dwa bloki `u64` z PRNG,
+- `ber_exp_ct()` używa stałego budżetu odczytów PRNG dla pojedynczej próby odrzucenia.
+
+Weryfikacja Kroku 25:
+- testy jednostkowe w `src/sampler/sign_ct_strict.rs` sprawdzają stały budżet PRNG dla
+  `gaussian0_sampler_ct()` i `ber_exp_ct()`,
+- test regresyjny stabilizuje krótką sekwencję `sample_binary_ct()` na stałym seedzie,
+- `cargo test --lib sampler::sign_ct_strict -- --nocapture` przechodzi na zielono.
+
+## Krok 27
+
+Stan po Kroku 27:
+- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}` działają dla
+  publicznych parametrów `Falcon512` i `Falcon1024`,
+- signer ładuje expanded key z Kroku 24 do przejściowego scratcha `ref_f64` i wykonuje historyczny
+  Falcon/Extra signing flow bez zmiany wire formatu,
+- semantyka nonce i podpisu jest na tym etapie zamrożona przez zgodność z referencyjnym signerem i
+  zachowanym baseline C.
+
+Aktualny zakres Kroku 27:
+- to nadal bridge przed `C1`, a nie finalny integer-only strict signer,
+- runtime execution wciąż zależy tu od referencyjnego backendu `ref_f64`,
+- osobny CT workspace API nie został jeszcze dodany.
+
+Weryfikacja Kroku 27:
+- testy jednostkowe w `src/falcon/sign_ct_strict.rs` porównują domyślny nonce i external nonce z
+  zachowanymi wektorami C z Kroku 17,
+- `tests/ct_consistency.rs` sprawdza roundtrip `verify(sign_ct_strict(...))` dla 512 i 1024 oraz
+  parzystość `sign_ct_strict` z `sign_ref` na stałych seedach,
+- `cargo test --features std,ref-f64,ct-strict,soft-fpr` oraz
+  `cargo test --no-default-features --features ct-strict` przechodzą na zielono.

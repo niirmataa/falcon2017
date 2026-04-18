@@ -101,6 +101,15 @@ Stan po Kroku 24:
   bufory `FprSoft`
 - expanded-key storage jest objęty `Drop + zeroize`
 
-Placeholderami pozostają jeszcze m.in.:
+Stan po Kroku 27:
 
-- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}`
+- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}` zwracają podpisy dla
+  publicznych parametrów `Falcon512` i `Falcon1024`
+- ścieżka podpisu ładuje expanded key z Kroku 24 do przejściowego scratcha `ref_f64`, żeby
+  zamrozić wire-semantykę Falcon/Extra przed finalnym integer-only executorem
+- publiczny CT signer na tym etapie pozostaje one-shot; nie ma jeszcze osobnego workspace API
+
+Otwarte pozostają jeszcze m.in.:
+
+- finalny integer-only executor dla `ExpandedSecretKeyCt::*`
+- ewentualne publiczne CT workspace API, jeśli będzie nadal potrzebne przed `C1`
