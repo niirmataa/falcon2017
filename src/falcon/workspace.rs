@@ -1,6 +1,7 @@
 //! Workspace types for advanced allocation control.
 
 use crate::math::fpr::ref_f64::Fpr;
+use crate::math::fpr::soft::Fpr as SoftFpr;
 #[cfg(feature = "zeroize")]
 use zeroize::Zeroize;
 
@@ -15,13 +16,16 @@ const fn expanded_ref_key_len(logn: u32) -> usize {
 
 /// Preallocated scratch space for advanced strict-CT key expansion.
 pub struct ExpandCtWorkspace<const LOGN: u32> {
-    pub(crate) prepared_bits: Vec<u64>,
+    pub(crate) gram: Vec<SoftFpr>,
+    pub(crate) tmp: Vec<SoftFpr>,
 }
 
 impl<const LOGN: u32> ExpandCtWorkspace<LOGN> {
     pub fn new() -> Self {
+        let n = 1usize << LOGN;
         Self {
-            prepared_bits: vec![0; expanded_ref_key_len(LOGN)],
+            gram: vec![SoftFpr::from_bits(0); 4 * n],
+            tmp: vec![SoftFpr::from_bits(0); 4 * n],
         }
     }
 }
@@ -103,8 +107,7 @@ pub struct SignCtWorkspace<const LOGN: u32> {
     pub(crate) hm: Vec<u16>,
     pub(crate) s1: Vec<i16>,
     pub(crate) s2: Vec<i16>,
-    pub(crate) prepared_ref: Vec<Fpr>,
-    pub(crate) sign_tmp_ref: Vec<Fpr>,
+    pub(crate) sign_tmp: Vec<SoftFpr>,
     pub(crate) nonce: Vec<u8>,
 }
 
@@ -115,8 +118,7 @@ impl<const LOGN: u32> SignCtWorkspace<LOGN> {
             hm: vec![0; n],
             s1: vec![0; n],
             s2: vec![0; n],
-            prepared_ref: vec![Fpr::new(0.0); expanded_ref_key_len(LOGN)],
-            sign_tmp_ref: vec![Fpr::new(0.0); 6 * n],
+            sign_tmp: vec![SoftFpr::from_bits(0); 6 * n],
             nonce: Vec::with_capacity(40),
         }
     }
@@ -193,9 +195,17 @@ impl<const LOGN: u32> Drop for SignRefWorkspace<LOGN> {
 }
 
 #[cfg(feature = "zeroize")]
+fn zeroize_soft_fpr(buf: &mut [SoftFpr]) {
+    for value in buf {
+        *value = SoftFpr::from_bits(0);
+    }
+}
+
+#[cfg(feature = "zeroize")]
 impl<const LOGN: u32> Drop for ExpandCtWorkspace<LOGN> {
     fn drop(&mut self) {
-        self.prepared_bits.as_mut_slice().zeroize();
+        zeroize_soft_fpr(&mut self.gram);
+        zeroize_soft_fpr(&mut self.tmp);
     }
 }
 
@@ -205,8 +215,7 @@ impl<const LOGN: u32> Drop for SignCtWorkspace<LOGN> {
         self.hm.as_mut_slice().zeroize();
         self.s1.as_mut_slice().zeroize();
         self.s2.as_mut_slice().zeroize();
-        zeroize_fpr(&mut self.prepared_ref);
-        zeroize_fpr(&mut self.sign_tmp_ref);
+        zeroize_soft_fpr(&mut self.sign_tmp);
         self.nonce.as_mut_slice().zeroize();
     }
 }

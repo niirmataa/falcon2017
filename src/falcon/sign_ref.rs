@@ -186,11 +186,12 @@ fn ffldl_binary_normalize(tree: &mut [Fpr], sigma: Fpr, logn: u32) {
     );
 }
 
-fn prepare_signing_key_into<'a, const LOGN: u32>(
+fn prepare_signing_key_into_with_normalize<'a, const LOGN: u32>(
     secret: &SecretKey<LOGN>,
     data: &'a mut [Fpr],
     gram: &mut [Fpr],
     tmp: &mut [Fpr],
+    normalize: bool,
 ) -> ExpandedRefKey<'a> {
     let n = 1usize << LOGN;
     let data = &mut data[..expanded_ref_key_len(LOGN)];
@@ -237,13 +238,24 @@ fn prepare_signing_key_into<'a, const LOGN: u32>(
     poly_add(g11, gxx, LOGN);
 
     ffldl_fft(tree, g00, g01, g11, LOGN, tmp);
-    let sigma = fpr_mul(
-        fpr_sqrt(fpr_of(i64::from(QB))),
-        fpr_div(fpr_of(155), fpr_of(100)),
-    );
-    ffldl_binary_normalize(tree, sigma, LOGN);
+    if normalize {
+        let sigma = fpr_mul(
+            fpr_sqrt(fpr_of(i64::from(QB))),
+            fpr_div(fpr_of(155), fpr_of(100)),
+        );
+        ffldl_binary_normalize(tree, sigma, LOGN);
+    }
 
     ExpandedRefKey { logn: LOGN, data }
+}
+
+fn prepare_signing_key_into<'a, const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    data: &'a mut [Fpr],
+    gram: &mut [Fpr],
+    tmp: &mut [Fpr],
+) -> ExpandedRefKey<'a> {
+    prepare_signing_key_into_with_normalize(secret, data, gram, tmp, true)
 }
 
 pub(crate) fn prepare_signing_key_bits_ref_into<const LOGN: u32>(
@@ -271,6 +283,18 @@ pub(crate) fn prepare_signing_key_bits_ref<const LOGN: u32>(secret: &SecretKey<L
     let mut out = vec![0u64; expanded_ref_key_len(LOGN)];
     prepare_signing_key_bits_ref_into(secret, &mut out);
     out
+}
+
+#[cfg(test)]
+pub(crate) fn prepare_signing_key_bits_ref_unnormalized<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+) -> Vec<u64> {
+    let n = 1usize << LOGN;
+    let mut data = vec![Fpr::new(0.0); expanded_ref_key_len(LOGN)];
+    let mut gram = vec![Fpr::new(0.0); 4 * n];
+    let mut tmp = vec![Fpr::new(0.0); 4 * n];
+    prepare_signing_key_into_with_normalize(secret, &mut data, &mut gram, &mut tmp, false);
+    data.into_iter().map(|value| value.v.to_bits()).collect()
 }
 
 fn ffsampling_fft<S: FnMut(Fpr, Fpr) -> i32>(

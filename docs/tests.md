@@ -38,5 +38,5 @@ Coverage already implemented for the `ct_strict` track:
   strict sampler path.
 
 Coverage intentionally deferred to later strict steps:
-- broader signature-format comparisons between `ref` and the future integer-only `ct_strict`
-  executor beyond the current bridge parity checks.
+- broader side-channel validation and larger-scale statistical campaigns for the now-runtime
+  integer-only `ct_strict` executor.

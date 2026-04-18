@@ -50,8 +50,7 @@ Model workspace:
 - One-shot API nadal samo alokuje scratch.
 - Zaawansowane ścieżki `*_in(...)` przyjmują `&mut Workspace<LOGN>` i pozwalają reużywać bufory między wywołaniami.
 - Workspace są częścią publicznego API dopiero od Kroku 21 i nie zmieniają wire formatu ani semantyki podpisu.
-- Od Kroku 28 strict-CT path ma własne `ExpandCtWorkspace` i `SignCtWorkspace`, mimo że bridge
-  signer nadal używa referencyjnego układu scratcha pod spodem.
+- Od Kroku 28 strict-CT path ma własne `ExpandCtWorkspace` i `SignCtWorkspace`.
 
 Ważne ograniczenia publicznego surface:
 
@@ -109,8 +108,9 @@ Stan po Kroku 27:
 
 - `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}` zwracają podpisy dla
   publicznych parametrów `Falcon512` i `Falcon1024`
-- ścieżka podpisu ładuje expanded key z Kroku 24 do przejściowego scratcha `ref_f64`, żeby
-  zamrozić wire-semantykę Falcon/Extra przed finalnym integer-only executorem
+- ścieżka podpisu wykonuje runtime strict signing bez pośredniego bridge do backendu `ref_f64`
+- expanded key z Kroku 24 jest używany bezpośrednio przez soft-FFT / soft-FPR executor, przy
+  zachowaniu wire-semantyki Falcon/Extra
 - publiczny CT signer na tym etapie pozostaje one-shot; nie ma jeszcze osobnego workspace API
 
 Stan po Kroku 28:
@@ -123,4 +123,4 @@ Stan po Kroku 28:
 
 Otwarte pozostają jeszcze m.in.:
 
-- finalny integer-only executor dla `ExpandedSecretKeyCt::*`
+- dalsze audyty side-channel i finalne domknięcie bramki `C1`

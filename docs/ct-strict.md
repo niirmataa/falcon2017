@@ -58,14 +58,14 @@ Weryfikacja Kroku 25:
 Stan po Kroku 27:
 - `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}` działają dla
   publicznych parametrów `Falcon512` i `Falcon1024`,
-- signer ładuje expanded key z Kroku 24 do przejściowego scratcha `ref_f64` i wykonuje historyczny
-  Falcon/Extra signing flow bez zmiany wire formatu,
+- signer używa bezpośrednio expanded key z Kroku 24 przez executor oparty o `FprSoft` i
+  `fft_soft`, bez pośredniego bridge do `ref_f64`,
 - semantyka nonce i podpisu jest na tym etapie zamrożona przez zgodność z referencyjnym signerem i
   zachowanym baseline C.
 
 Aktualny zakres Kroku 27:
-- to nadal bridge przed `C1`, a nie finalny integer-only strict signer,
-- runtime execution wciąż zależy tu od referencyjnego backendu `ref_f64`,
+- to jest już runtime integer-only strict signer dla binary Falcon,
+- runtime execution nie zależy już od referencyjnego backendu `ref_f64`,
 - osobny CT workspace API nie został jeszcze dodany.
 
 Weryfikacja Kroku 27:
@@ -80,7 +80,7 @@ Weryfikacja Kroku 27:
 
 Stan po Kroku 28:
 - `ExpandCtWorkspace<LOGN>` i `SignCtWorkspace<LOGN>` są publicznymi workspace dla strict-CT
-  bridge path,
+  strict path,
 - `SecretKey::expand_ct_strict_in()` reużywa scratch przy przygotowaniu expanded key,
 - `ExpandedSecretKeyCt::{sign_ct_strict_in, sign_ct_strict_with_external_nonce_in}` reużywają
   scratch między wywołaniami bez dodatkowego API-hackingu po stronie użytkownika,
@@ -88,8 +88,7 @@ Stan po Kroku 28:
   jedna.
 
 Aktualny zakres Kroku 28:
-- to nadal bridge przed `C1`, a nie finalny integer-only strict signer,
-- runtime execution wciąż zależy od backendu `ref_f64`,
+- runtime execution pozostaje już na soft-FFT / soft-FPR path,
 - krok 28 domyka publiczny surface CT dla ścieżek `*_in(...)`, ale nie zamyka jeszcze audytu.
 
 Weryfikacja Kroku 28:
@@ -106,15 +105,14 @@ Stan po Kroku 29:
 - `gaussian0_sampler_ct()` nie ma już wczesnego wyjścia po CDF i zużywa stały budżet PRNG dla
   pojedynczej próby,
 - `SignCtWorkspace<LOGN>` ma własny scratch i `Drop + zeroize` dla buforów strict-path,
-- dodany został prywatny groundwork `src/math/fft_soft.rs` oraz tabela
-  `src/math/fft_gm_bits_table.rs`, ale ten executor nie jest jeszcze domyślną ścieżką runtime.
+- `src/math/fft_soft.rs` i `src/math/fft_gm_bits_table.rs` są już aktywną ścieżką runtime dla
+  strict signing.
 
 Wynik audytu Kroku 29:
 - publiczne moduły strict zostały odcięte od bezpośrednich importów `ref_f64`,
 - strict signer używa już strict samplera z Kroku 25,
-- jednocześnie wykonanie signing math pozostaje jeszcze spięte przez prywatny helper
-  `src/falcon/sign_ct_bridge_ref.rs`, więc **Bramka C1.3 (`ct_strict` nie używa `f64`) nadal nie
-  jest zamknięta**.
+- signing math wykonuje się już bez prywatnego bridge do referencyjnego backendu, więc
+  **Bramka C1.3 (`ct_strict` nie używa `f64`) jest zamknięta**.
 
 Weryfikacja Kroku 29:
 - `tests/ct_consistency.rs` ma audyt źródeł `strict_modules_do_not_directly_import_ref_f64_or_libm`,
@@ -134,9 +132,8 @@ Stan po Kroku 30:
 
 Wynik Kroku 30:
 - domknięty jest audyt testowy i regresyjny dla strict surface oraz shared signature decode,
-- jednocześnie **Bramka C1.3 nadal pozostaje otwarta**, bo runtime strict signing wciąż przechodzi
-  przez prywatny bridge `src/falcon/sign_ct_bridge_ref.rs`, więc wykonanie nadal zależy od
-  referencyjnego backendu `ref_f64`.
+- a runtime strict signing przechodzi już wyłącznie przez soft-FFT / soft-FPR path, bez zależności
+  od `ref_f64`.
 
 Weryfikacja Kroku 30:
 - `cargo test --test ct_consistency`,

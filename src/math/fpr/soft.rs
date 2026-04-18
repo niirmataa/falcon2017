@@ -413,11 +413,19 @@ pub(crate) fn fpr_sub(x: Fpr, y: Fpr) -> Fpr {
             FPR_ZERO
         };
     }
+    let dx = decode(x);
+    let dy = decode(y);
+    if dx.sig == 0 {
+        return fpr_neg(y);
+    }
+    if dy.sig == 0 {
+        return x;
+    }
     add_decoded(
-        decode(x),
+        dx,
         Decoded {
-            sign: !y.sign(),
-            ..decode(y)
+            sign: !dy.sign,
+            ..dy
         },
     )
 }
@@ -475,7 +483,10 @@ pub(crate) fn fpr_div(x: Fpr, y: Fpr) -> Fpr {
         return Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS);
     }
 
-    let shift = if dx.sig >= dy.sig { 55 } else { 56 };
+    // Produce a 56-bit extended significand directly in the range expected by
+    // round_pack(): [2^55, 2^56). This preserves the exact quotient scale and
+    // leaves the low bits of q available as round/sticky bits.
+    let shift = if dx.sig < dy.sig { 56 } else { 55 };
     let num = (dx.sig as u128) << shift;
     let q = num / (dy.sig as u128);
     let r = num % (dy.sig as u128);
@@ -696,6 +707,20 @@ mod tests {
             assert_eq!(fpr_floor(sx), x.floor() as i64, "floor {x}");
         }
         assert_eq!(fpr_inverse_of(8).bits(), 0.125f64.to_bits());
+    }
+
+    #[test]
+    fn subtraction_with_signed_zero_preserves_operand_bits() {
+        let pos = from_f64(1.161_602_574_801_729_8);
+        assert_eq!(fpr_sub(pos, from_f64(0.0)).bits(), pos.bits());
+        assert_eq!(fpr_sub(pos, from_f64(-0.0)).bits(), pos.bits());
+
+        let neg = from_f64(-2.75);
+        assert_eq!(fpr_sub(neg, from_f64(0.0)).bits(), neg.bits());
+        assert_eq!(fpr_sub(neg, from_f64(-0.0)).bits(), neg.bits());
+
+        assert_eq!(fpr_sub(from_f64(0.0), from_f64(3.5)).bits(), from_f64(-3.5).bits());
+        assert_eq!(fpr_sub(from_f64(-0.0), from_f64(3.5)).bits(), from_f64(-3.5).bits());
     }
 
     #[test]
