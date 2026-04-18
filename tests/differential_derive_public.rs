@@ -1,3 +1,5 @@
+#![cfg(feature = "deterministic-tests")]
+
 mod common;
 
 use common::c_reference;

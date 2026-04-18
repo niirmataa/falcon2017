@@ -43,7 +43,7 @@ pub fn decode(data: &[u8], logn: u32) -> Result<Box<[u16]>> {
     }
     let n = ternary_len(logn);
     let need = encoded_len(logn);
-    if data.len() < need {
+    if data.len() != need {
         return Err(Error::InvalidEncoding);
     }
 

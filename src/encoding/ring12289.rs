@@ -47,7 +47,7 @@ pub fn decode_into(data: &[u8], logn: u32, out: &mut [u16]) -> Result<()> {
         return Err(Error::InvalidEncoding);
     }
     let need = encoded_len(logn);
-    if data.len() < need {
+    if data.len() != need {
         return Err(Error::InvalidEncoding);
     }
 
