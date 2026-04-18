@@ -18,12 +18,12 @@ fn alloc_soft_slice(len: usize) -> Box<[Fpr]> {
     vec![Fpr::from_bits(0); len].into_boxed_slice()
 }
 
-fn smallints_to_fpr(dst: &mut [Fpr], src: &[i8], logn: u32) {
+fn smallints_to_fpr<T: Copy + Into<i64>>(dst: &mut [Fpr], src: &[T], logn: u32) {
     let n = 1usize << logn;
     assert_eq!(dst.len(), n);
     assert_eq!(src.len(), n);
     for (d, &s) in dst.iter_mut().zip(src.iter()) {
-        *d = fpr_of(i64::from(s));
+        *d = fpr_of(s.into());
     }
 }
 
@@ -259,11 +259,13 @@ pub(crate) fn debug_expand_ct_inner_unnormalized<const LOGN: u32>(
 #[cfg(test)]
 mod tests {
     use super::{debug_expand_ct_inner, debug_expand_ct_inner_unnormalized};
+    use crate::falcon::sign_ref::{
+        prepare_signing_key_bits_ref, prepare_signing_key_bits_ref_unnormalized,
+    };
     use crate::math::fft as ref_fft;
     use crate::math::fft_soft as soft_fft;
     use crate::math::fpr::ref_f64::{fpr_of as ref_fpr_of, Fpr as RefFpr};
     use crate::math::fpr::soft::{fpr_of as soft_fpr_of, Fpr};
-    use crate::falcon::sign_ref::{prepare_signing_key_bits_ref, prepare_signing_key_bits_ref_unnormalized};
     use crate::types::SecretKey;
 
     const REF_SECRET_KEY_NONE: [u8; 129] = [
@@ -289,15 +291,15 @@ mod tests {
         out
     }
 
-    fn smallints_to_ref(dst: &mut [RefFpr], src: &[i8]) {
+    fn smallints_to_ref<T: Copy + Into<i64>>(dst: &mut [RefFpr], src: &[T]) {
         for (d, &s) in dst.iter_mut().zip(src.iter()) {
-            *d = ref_fpr_of(i64::from(s));
+            *d = ref_fpr_of(s.into());
         }
     }
 
-    fn smallints_to_soft(dst: &mut [Fpr], src: &[i8]) {
+    fn smallints_to_soft<T: Copy + Into<i64>>(dst: &mut [Fpr], src: &[T]) {
         for (d, &s) in dst.iter_mut().zip(src.iter()) {
-            *d = soft_fpr_of(i64::from(s));
+            *d = soft_fpr_of(s.into());
         }
     }
 

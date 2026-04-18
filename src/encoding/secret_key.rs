@@ -56,8 +56,8 @@ pub fn encode(
     logn: u32,
     f: &[i8],
     g: &[i8],
-    big_f: &[i8],
-    big_g: &[i8],
+    big_f: &[i16],
+    big_g: &[i16],
 ) -> Result<Box<[u8]>> {
     validate_logn(ternary, logn)?;
     let n = vector_len(ternary, logn)?;
@@ -68,9 +68,13 @@ pub fn encode(
     let mut out = Vec::new();
     out.push(header(ternary, compression, logn)?);
     let q = modulus(ternary);
-    for poly in [f, g, big_f, big_g] {
+    for poly in [f, g] {
         let tmp = poly.iter().map(|&x| i16::from(x)).collect::<Vec<_>>();
         let enc = smallvec::encode(compression, q, &tmp, logn)?;
+        out.extend_from_slice(&enc);
+    }
+    for poly in [big_f, big_g] {
+        let enc = smallvec::encode(compression, q, poly, logn)?;
         out.extend_from_slice(&enc);
     }
     Ok(out.into_boxed_slice())

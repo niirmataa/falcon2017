@@ -90,8 +90,8 @@ pub(crate) struct PreparedPublicKeyInner<const LOGN: u32> {
 pub(crate) struct SecretKeyInner<const LOGN: u32> {
     pub(crate) f: Box<[i8]>,
     pub(crate) g: Box<[i8]>,
-    pub(crate) big_f: Box<[i8]>,
-    pub(crate) big_g: Box<[i8]>,
+    pub(crate) big_f: Box<[i16]>,
+    pub(crate) big_g: Box<[i16]>,
 }
 
 pub(crate) struct ExpandedSecretKeyCtInner<const LOGN: u32> {
@@ -177,8 +177,8 @@ impl<const LOGN: u32> SecretKey<LOGN> {
             inner: SecretKeyInner {
                 f: poly_i8_from_i16(&decoded.f)?,
                 g: poly_i8_from_i16(&decoded.g)?,
-                big_f: poly_i8_from_i16(&decoded.big_f)?,
-                big_g: poly_i8_from_i16(&decoded.big_g)?,
+                big_f: decoded.big_f,
+                big_g: decoded.big_g,
             },
         })
     }

@@ -319,8 +319,8 @@ fn keygen_ref_from_shake_in<const LOGN: u32>(
             inner: SecretKeyInner {
                 f: poly_i8_from_i16(&f[..n])?,
                 g: poly_i8_from_i16(&g[..n])?,
-                big_f: poly_i8_from_i16(&big_f)?,
-                big_g: poly_i8_from_i16(&big_g)?,
+                big_f: big_f.into_boxed_slice(),
+                big_g: big_g.into_boxed_slice(),
             },
         };
         return Ok(Keypair { public, secret });
@@ -1439,8 +1439,8 @@ mod tests {
 
         let f = as_i16(&keypair.secret.inner.f);
         let g = as_i16(&keypair.secret.inner.g);
-        let big_f = as_i16(&keypair.secret.inner.big_f);
-        let big_g = as_i16(&keypair.secret.inner.big_g);
+        let big_f = keypair.secret.inner.big_f.to_vec();
+        let big_g = keypair.secret.inner.big_g.to_vec();
         let h = compute_public(&f, &g, 10).expect("public key");
 
         let decoded =

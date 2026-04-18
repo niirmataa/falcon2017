@@ -70,12 +70,12 @@ fn zeroize_ref_fpr(buf: &mut [Fpr]) {
     }
 }
 
-fn smallints_to_fpr(dst: &mut [Fpr], src: &[i8], logn: u32) {
+fn smallints_to_fpr<T: Copy + Into<i64>>(dst: &mut [Fpr], src: &[T], logn: u32) {
     let n = 1usize << logn;
     assert_eq!(dst.len(), n);
     assert_eq!(src.len(), n);
     for (d, &s) in dst.iter_mut().zip(src.iter()) {
-        *d = fpr_of(i64::from(s));
+        *d = fpr_of(s.into());
     }
 }
 
