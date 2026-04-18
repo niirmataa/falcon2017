@@ -19,3 +19,15 @@ name = "decode_signature"
 path = "fuzz_targets/decode_signature.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "decode_public_key"
+path = "fuzz_targets/decode_public_key.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "decode_secret_key"
+path = "fuzz_targets/decode_secret_key.rs"
+test = false
+doc = false

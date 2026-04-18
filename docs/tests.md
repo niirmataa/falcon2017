@@ -11,10 +11,23 @@ Reference coverage already present in-tree:
 - SHAKE and PRNG KATs,
 - NTRU vectors,
 - keygen/sign/verify roundtrips for Falcon512 and Falcon1024,
-- encode/decode and malformed-input regressions,
+- encode/decode, property-based codec tests, and malformed-input regressions,
 - differential verify and derive-public checks against the frozen C baseline,
 - deterministic differential campaigns covering 1024 seeded keygen cases and 1024 seeded
   verify cases across the public Falcon512/Falcon1024 parameter sets.
+
+## Encoding and API Robustness
+
+Additional robustness coverage on top of the reference/KAT suite:
+- `tests/codec_properties.rs` runs proptest roundtrips for `ring12289`, `ring18433`,
+  `smallvec`, `public_key`, `signature`, and `secret_key` across supported binary/ternary
+  `logn` ranges,
+- `tests/malformed_inputs.rs` now mutates real Falcon512/Falcon1024 artifacts through the public
+  API and checks truncation, reserved header bits, public-key trailing bytes, signature trailing
+  bytes, and the `InvalidEncoding` vs `InvalidSignature` split for wrong nonce/message cases,
+- `src/encoding/ring12289.rs` and `src/encoding/ring18433.rs` now reject trailing bytes at the
+  low-level ring decoder boundary; this is covered by both unit tests and public malformed-input
+  regressions.
 
 ## Strict CT Coverage
 
@@ -33,9 +46,6 @@ Coverage already implemented for the `ct_strict` track:
   one-shot/workspace parity on fixed seeds, checks wire-header parity between `ref` and
   `ct_strict`, includes a timing smoke on fixed seeds, and audits that strict production modules
   do not directly import `ref_f64` or `libm`,
-- `fuzz/decode_signature` is a real libFuzzer harness for the shared signature decoder used by
-  both `ref` and `ct_strict`; its compile gate is
-  `CXX=clang++ cargo check --manifest-path fuzz/Cargo.toml`,
 - `src/sampler/sign_ct_strict.rs` now also contains distribution and timing smoke tests for the
   strict sampler path.
 
@@ -49,7 +59,30 @@ When `deterministic-tests` is enabled, the campaign-level differential checks ar
 - `tests/differential_keygen.rs`: 512 seeded Falcon512 keygens plus 512 seeded Falcon1024
   keygens, each compared byte-for-byte against the frozen C helper for public key, secret key,
   decode roundtrip, and `derive_public()`,
+- `tests/differential_derive_public.rs`: fixed-seed derive-public regressions against the frozen
+  C helper for Falcon512 and Falcon1024, gated with the same `deterministic-tests` feature as the
+  other C-dependent campaigns,
 - `tests/differential_verify.rs`: 512 seeded Falcon512 signatures plus 512 seeded Falcon1024
   signatures, with varied message lengths, varied external nonce lengths, and alternating
   `Compression::{None, Static}`; every Rust-produced signature must verify both in Rust and in
   the frozen C verifier.
+
+## Fuzz Harnesses
+
+In-repo libFuzzer targets now cover the three shared decoders:
+- `fuzz/fuzz_targets/decode_signature.rs`,
+- `fuzz/fuzz_targets/decode_public_key.rs`,
+- `fuzz/fuzz_targets/decode_secret_key.rs`.
+
+Current practical status in Alpine WSL:
+- reliable repo gate: `cargo check --manifest-path fuzz/Cargo.toml`,
+- true `cargo fuzz` on nightly is partially blocked by the Alpine/musl environment:
+  `--sanitizer=address` fails because musl uses statically linked libc, and
+  `--sanitizer=none` with `--target x86_64-unknown-linux-musl` requires a C++/libFuzzer setup
+  that is unstable under the current Alpine toolchain,
+- an exploratory nightly run with `cargo fuzz run --sanitizer none --target
+  x86_64-unknown-linux-musl decode_signature` reached real coverage/corpus growth, but the musl
+  runtime then terminated with a non-reproducible `libFuzzer: deadly signal` on an empty-input
+  artifact; direct fixed-input replay of that artifact does not reproduce a decoder crash,
+- longer fuzz campaigns should therefore run on a GNU/ASan-capable fuzz host instead of relying
+  on the local Alpine musl setup.
