@@ -13,7 +13,7 @@ The project is being built as a single crate first. Hawk and any shared Falcon/H
 
 ## Status
 
-Current checkpoint: `v0.1-step21`
+Current checkpoint: `v0.1-step28`
 
 Implemented today:
 
@@ -25,12 +25,16 @@ Implemented today:
 - encode/decode for public keys, secret keys, and signatures
 - SHAKE, PRNG, `fpr`, FFT, NTT/modp, `zint`, and `solve_NTRU`
 - advanced `*_in(...)` APIs with reusable workspaces for the reference path
+- strict-CT expanded secret key storage on `FprSoft`
+- strict-CT sampler helpers with fixed PRNG budgets
+- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}` bridge preserving
+  Falcon/Extra wire semantics
+- public `SignCtWorkspace<LOGN>` plus workspace-backed `ExpandedSecretKeyCt::*_in(...)`
 
 Not implemented yet:
 
-- strict constant-time expanded secret key
-- strict constant-time signing path
-- CT audit and CT-specific tests
+- final integer-only strict constant-time signing executor
+- CT audit, timing smoke tests, and remaining strict-CT coverage
 - Hawk integration
 
 ## Design Constraints
@@ -68,7 +72,8 @@ The public surface is intentionally small:
 - `SecretKey<LOGN>`, `ExpandedSecretKeyCt<LOGN>`
 - `DetachedSignature<LOGN>`, `Nonce`, `Verifier<LOGN>`
 - `Compression`, `Error`, `Result`
-- `KeygenWorkspace<LOGN>`, `SignRefWorkspace<LOGN>`, `VerifyWorkspace<LOGN>`
+- `KeygenWorkspace<LOGN>`, `SignRefWorkspace<LOGN>`, `SignCtWorkspace<LOGN>`,
+  `VerifyWorkspace<LOGN>`
 
 The intended usage split is:
 
