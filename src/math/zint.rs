@@ -1,8 +1,6 @@
 //! Big-integer helpers used by NTRU solving.
 
-use crate::math::modp::{
-    modp_add, modp_montymul, modp_ninv31, modp_r2, modp_sub,
-};
+use crate::math::modp::{modp_add, modp_montymul, modp_ninv31, modp_r2, modp_sub};
 use crate::math::primes::primes2;
 
 const MASK31: u32 = 0x7FFF_FFFF;

@@ -5,7 +5,7 @@ use crate::rng::shake256::ShakeContext;
 
 pub(crate) fn hash_to_point_binary(sc: &mut ShakeContext, logn: u32) -> Box<[u16]> {
     let mut out = vec![0u16; 1usize << logn];
-    hash_to_point(sc, QB, &mut out, logn);
+    hash_to_point_binary_into(sc, logn, &mut out);
     out.into_boxed_slice()
 }
 
@@ -15,6 +15,23 @@ pub(crate) fn hash_message_to_point_binary(nonce: &[u8], message: &[u8], logn: u
     sc.inject(message);
     sc.flip();
     hash_to_point_binary(&mut sc, logn)
+}
+
+pub(crate) fn hash_to_point_binary_into(sc: &mut ShakeContext, logn: u32, out: &mut [u16]) {
+    hash_to_point(sc, QB, out, logn);
+}
+
+pub(crate) fn hash_message_to_point_binary_into(
+    nonce: &[u8],
+    message: &[u8],
+    logn: u32,
+    out: &mut [u16],
+) {
+    let mut sc = ShakeContext::shake256();
+    sc.inject(nonce);
+    sc.inject(message);
+    sc.flip();
+    hash_to_point_binary_into(&mut sc, logn, out);
 }
 
 pub(crate) fn hash_to_point(sc: &mut ShakeContext, q: u32, out: &mut [u16], logn: u32) {

@@ -14,6 +14,9 @@ Publicznie eksportowane typy:
 - `DetachedSignature<const LOGN: u32>`
 - `Nonce`
 - `Verifier<const LOGN: u32>`
+- `KeygenWorkspace<const LOGN: u32>`
+- `SignRefWorkspace<const LOGN: u32>`
+- `VerifyWorkspace<const LOGN: u32>`
 - `Compression::{None, Static}`
 - `Error::{InvalidEncoding, InvalidSignature, InvalidParameter, Randomness, Internal}`
 - `Result<T>`
@@ -22,11 +25,13 @@ Publiczne metody obecne na tym etapie:
 
 - `Falcon512::keygen()`
 - `Falcon1024::keygen()`
+- `Falcon512::keygen_in()` i `Falcon1024::keygen_in()`
 - `Falcon512::keygen_from_seed()` i `Falcon1024::keygen_from_seed()` za feature `deterministic-tests`
-- `SecretKey::{to_bytes, from_bytes, derive_public, sign_ref, sign_ref_with_external_nonce, expand_ct_strict}`
+- `Falcon512::keygen_from_seed_in()` i `Falcon1024::keygen_from_seed_in()` za feature `deterministic-tests`
+- `SecretKey::{to_bytes, from_bytes, derive_public, sign_ref, sign_ref_in, sign_ref_with_external_nonce, sign_ref_with_external_nonce_in, expand_ct_strict}`
 - `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}`
-- `PublicKey::{to_bytes, from_bytes, prepare, verify_detached}`
-- `PreparedPublicKey::{verify_detached, verifier}`
+- `PublicKey::{to_bytes, from_bytes, prepare, verify_detached, verify_detached_in}`
+- `PreparedPublicKey::{verify_detached, verify_detached_in, verifier}`
 - `Verifier::{update, finalize}`
 - `Nonce::{as_bytes, from_bytes}`
 - `DetachedSignature::{nonce, body_bytes}`
@@ -37,6 +42,12 @@ Model weryfikacji:
 - Docelową ścieżką dla wielokrotnej weryfikacji jest `PublicKey::prepare()` -> `PreparedPublicKey`, a następnie `PreparedPublicKey::verify_detached()` albo `PreparedPublicKey::verifier(&Nonce)`.
 - `Verifier` nie ma publicznych konstruktorów; jest tworzony wyłącznie przez `PreparedPublicKey::verifier()`.
 - Przed bramką `C1` nie dodajemy żadnych skrótów ani metod wygodowych ponad literalny zakres z sekcji 3 `GENERAL.md`.
+
+Model workspace:
+
+- One-shot API nadal samo alokuje scratch.
+- Zaawansowane ścieżki `*_in(...)` przyjmują `&mut Workspace<LOGN>` i pozwalają reużywać bufory między wywołaniami.
+- Workspace są częścią publicznego API dopiero od Kroku 21 i nie zmieniają wire formatu ani semantyki podpisu.
 
 Ważne ograniczenia publicznego surface:
 
@@ -57,7 +68,7 @@ Metody już działające po Kroku 17:
 
 - `Falcon512::keygen()` i `Falcon1024::keygen()`
 - `Falcon512::keygen_from_seed()` i `Falcon1024::keygen_from_seed()` za feature `deterministic-tests`
-- `SecretKey::{to_bytes, from_bytes}`
+- `SecretKey::{to_bytes, from_bytes, derive_public}`
 - `SecretKey::{sign_ref, sign_ref_with_external_nonce}`
 - `PublicKey::{to_bytes, from_bytes, verify_detached}`
 
@@ -67,7 +78,15 @@ Metody działające po Kroku 18:
 - `PreparedPublicKey::{verify_detached, verifier}`
 - `Verifier::{update, finalize}`
 
+Metody działające po Kroku 21:
+
+- `Falcon512::keygen_in()` i `Falcon1024::keygen_in()`
+- `Falcon512::keygen_from_seed_in()` i `Falcon1024::keygen_from_seed_in()` za feature `deterministic-tests`
+- `SecretKey::{sign_ref_in, sign_ref_with_external_nonce_in}`
+- `PublicKey::verify_detached_in()`
+- `PreparedPublicKey::verify_detached_in()`
+- `KeygenWorkspace`, `SignRefWorkspace`, `VerifyWorkspace`
+
 Placeholderami pozostają jeszcze m.in.:
 
-- `SecretKey::derive_public()`
 - `ExpandedSecretKeyCt::*`

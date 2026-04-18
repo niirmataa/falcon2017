@@ -87,6 +87,22 @@ pub fn encode(comp: Compression, q: u32, values: &[i16], logn: u32) -> Result<Bo
 
 pub fn decode(comp: Compression, q: u32, data: &[u8], logn: u32) -> Result<(Box<[i16]>, usize)> {
     let n = vector_len(q, logn)?;
+    let mut out = vec![0i16; n];
+    let used = decode_into(comp, q, data, logn, &mut out)?;
+    Ok((out.into_boxed_slice(), used))
+}
+
+pub fn decode_into(
+    comp: Compression,
+    q: u32,
+    data: &[u8],
+    logn: u32,
+    out: &mut [i16],
+) -> Result<usize> {
+    let n = vector_len(q, logn)?;
+    if out.len() != n {
+        return Err(Error::InvalidEncoding);
+    }
     match comp {
         Compression::None => {
             let need = n << 1;
@@ -96,27 +112,26 @@ pub fn decode(comp: Compression, q: u32, data: &[u8], logn: u32) -> Result<(Box<
 
             let hq = q >> 1;
             let tq = hq + q + 1;
-            let mut out = Vec::with_capacity(n);
-            for chunk in data[..need].chunks_exact(2) {
+            for (dst, chunk) in out.iter_mut().zip(data[..need].chunks_exact(2)) {
                 let mut w = (u32::from(chunk[0]) << 8) | u32::from(chunk[1]);
                 w |= 0u32.wrapping_sub(w & 0x8000);
                 w = w.wrapping_add(q);
                 if (((hq.wrapping_sub(w)) & (w.wrapping_sub(tq))) >> 31) == 0 {
                     return Err(Error::InvalidEncoding);
                 }
-                out.push((i64::from(w) - i64::from(q)) as i16);
+                *dst = (i64::from(w) - i64::from(q)) as i16;
             }
-            Ok((out.into_boxed_slice(), need))
+            Ok(need)
         }
         Compression::Static => {
             let j = coding_bits(q)?;
             let mask = (1u32 << j) - 1;
-            let mut out = Vec::with_capacity(n);
             let mut v = 0usize;
             let mut db = 0u32;
             let mut db_len = 0usize;
+            let mut filled = 0usize;
 
-            while out.len() < n {
+            while filled < n {
                 while db_len <= j {
                     if v >= data.len() {
                         return Err(Error::InvalidEncoding);
@@ -152,13 +167,14 @@ pub fn decode(comp: Compression, q: u32, data: &[u8], logn: u32) -> Result<(Box<
 
                 lo += ne << j;
                 let value = if sign != 0 { -(lo as i16) } else { lo as i16 };
-                out.push(value);
+                out[filled] = value;
+                filled += 1;
             }
 
             if (db & ((1u32 << db_len) - 1)) != 0 {
                 return Err(Error::InvalidEncoding);
             }
-            Ok((out.into_boxed_slice(), v))
+            Ok(v)
         }
     }
 }

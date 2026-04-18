@@ -3,7 +3,8 @@
 use crate::compression::Compression;
 use crate::encoding::signature;
 use crate::error::{Error, Result};
-use crate::falcon::hash_to_point::{hash_message_to_point_binary, is_short_binary};
+use crate::falcon::hash_to_point::{hash_message_to_point_binary_into, is_short_binary};
+use crate::falcon::workspace::SignRefWorkspace;
 use crate::math::fft::{
     fft, ifft, poly_add, poly_adj_fft, poly_merge_fft, poly_mul_fft, poly_muladj_fft,
     poly_mulconst, poly_mulselfadj_fft, poly_neg, poly_split_fft, poly_sub,
@@ -19,12 +20,12 @@ use crate::sampler::sign_ref::sample_binary;
 use crate::types::{DetachedSignature, Nonce, SecretKey};
 use rand_core::{CryptoRng, RngCore};
 
-struct ExpandedRefKey {
+struct ExpandedRefKey<'a> {
     logn: u32,
-    data: Box<[Fpr]>,
+    data: &'a [Fpr],
 }
 
-impl ExpandedRefKey {
+impl ExpandedRefKey<'_> {
     fn b00(&self) -> &[Fpr] {
         let n = 1usize << self.logn;
         &self.data[..n]
@@ -176,59 +177,64 @@ fn ffldl_binary_normalize(tree: &mut [Fpr], sigma: Fpr, logn: u32) {
     );
 }
 
-fn prepare_signing_key<const LOGN: u32>(secret: &SecretKey<LOGN>) -> ExpandedRefKey {
+fn prepare_signing_key_into<'a, const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    data: &'a mut [Fpr],
+    gram: &mut [Fpr],
+    tmp: &mut [Fpr],
+) -> ExpandedRefKey<'a> {
     let n = 1usize << LOGN;
-    let mut data = vec![fpr_of(0); expanded_ref_key_len(LOGN)];
+    let data = &mut data[..expanded_ref_key_len(LOGN)];
+    let gram = &mut gram[..4 * n];
+    let tmp = &mut tmp[..4 * n];
 
-    {
-        let (b00, rest) = data.split_at_mut(n);
-        let (b01, rest) = rest.split_at_mut(n);
-        let (b10, rest) = rest.split_at_mut(n);
-        let (b11, tree) = rest.split_at_mut(n);
+    let (b00, rest) = data.split_at_mut(n);
+    let (b01, rest) = rest.split_at_mut(n);
+    let (b10, rest) = rest.split_at_mut(n);
+    let (b11, tree) = rest.split_at_mut(n);
 
-        smallints_to_fpr(b01, &secret.inner.f, LOGN);
-        smallints_to_fpr(b00, &secret.inner.g, LOGN);
-        smallints_to_fpr(b11, &secret.inner.big_f, LOGN);
-        smallints_to_fpr(b10, &secret.inner.big_g, LOGN);
+    smallints_to_fpr(b01, &secret.inner.f, LOGN);
+    smallints_to_fpr(b00, &secret.inner.g, LOGN);
+    smallints_to_fpr(b11, &secret.inner.big_f, LOGN);
+    smallints_to_fpr(b10, &secret.inner.big_g, LOGN);
 
-        fft(b00, LOGN);
-        fft(b01, LOGN);
-        fft(b10, LOGN);
-        fft(b11, LOGN);
-        poly_neg(b01, LOGN);
-        poly_neg(b11, LOGN);
+    fft(b00, LOGN);
+    fft(b01, LOGN);
+    fft(b10, LOGN);
+    fft(b11, LOGN);
+    poly_neg(b01, LOGN);
+    poly_neg(b11, LOGN);
 
-        let mut g00 = b00.to_vec();
-        poly_mulselfadj_fft(&mut g00, LOGN);
-        let mut gxx = b01.to_vec();
-        poly_mulselfadj_fft(&mut gxx, LOGN);
-        poly_add(&mut g00, &gxx, LOGN);
+    let (g00, rest) = gram.split_at_mut(n);
+    let (g01, rest) = rest.split_at_mut(n);
+    let (g11, gxx) = rest.split_at_mut(n);
 
-        let mut g01 = b00.to_vec();
-        poly_muladj_fft(&mut g01, b10, LOGN);
-        gxx.copy_from_slice(b01);
-        poly_muladj_fft(&mut gxx, b11, LOGN);
-        poly_add(&mut g01, &gxx, LOGN);
+    g00.copy_from_slice(b00);
+    poly_mulselfadj_fft(g00, LOGN);
+    gxx.copy_from_slice(b01);
+    poly_mulselfadj_fft(gxx, LOGN);
+    poly_add(g00, gxx, LOGN);
 
-        let mut g11 = b10.to_vec();
-        poly_mulselfadj_fft(&mut g11, LOGN);
-        gxx.copy_from_slice(b11);
-        poly_mulselfadj_fft(&mut gxx, LOGN);
-        poly_add(&mut g11, &gxx, LOGN);
+    g01.copy_from_slice(b00);
+    poly_muladj_fft(g01, b10, LOGN);
+    gxx.copy_from_slice(b01);
+    poly_muladj_fft(gxx, b11, LOGN);
+    poly_add(g01, gxx, LOGN);
 
-        let mut tmp = vec![fpr_of(0); 4 * n];
-        ffldl_fft(tree, &g00, &g01, &g11, LOGN, &mut tmp);
-        let sigma = fpr_mul(
-            fpr_sqrt(fpr_of(i64::from(QB))),
-            fpr_div(fpr_of(155), fpr_of(100)),
-        );
-        ffldl_binary_normalize(tree, sigma, LOGN);
-    }
+    g11.copy_from_slice(b10);
+    poly_mulselfadj_fft(g11, LOGN);
+    gxx.copy_from_slice(b11);
+    poly_mulselfadj_fft(gxx, LOGN);
+    poly_add(g11, gxx, LOGN);
 
-    ExpandedRefKey {
-        logn: LOGN,
-        data: data.into_boxed_slice(),
-    }
+    ffldl_fft(tree, g00, g01, g11, LOGN, tmp);
+    let sigma = fpr_mul(
+        fpr_sqrt(fpr_of(i64::from(QB))),
+        fpr_div(fpr_of(155), fpr_of(100)),
+    );
+    ffldl_binary_normalize(tree, sigma, LOGN);
+
+    ExpandedRefKey { logn: LOGN, data }
 }
 
 fn ffsampling_fft<S: FnMut(Fpr, Fpr) -> i32>(
@@ -293,12 +299,13 @@ fn ffsampling_fft<S: FnMut(Fpr, Fpr) -> i32>(
     poly_merge_fft(z0, tmp_lo, tmp_hi, logn);
 }
 
-fn do_sign_binary(
+fn do_sign_binary_in(
     s1: &mut [i16],
     s2: &mut [i16],
-    sk: &ExpandedRefKey,
+    sk: &ExpandedRefKey<'_>,
     hm: &[u16],
     prng: &mut Prng,
+    tmp: &mut [Fpr],
 ) {
     let logn = sk.logn;
     let n = 1usize << logn;
@@ -308,7 +315,7 @@ fn do_sign_binary(
     let b11 = sk.b11();
     let tree = sk.tree();
 
-    let mut tmp = vec![fpr_of(0); 6 * n];
+    let tmp = &mut tmp[..6 * n];
     let (t0, rest) = tmp.split_at_mut(n);
     let (t1, rest) = rest.split_at_mut(n);
     let (tx, rest) = rest.split_at_mut(n);
@@ -371,6 +378,7 @@ fn seed_prng_stream(rng: &mut (impl RngCore + CryptoRng)) -> Result<ShakeContext
     Ok(sc)
 }
 
+#[cfg(test)]
 fn sign_detached_with_rng_stream<const LOGN: u32>(
     secret: &SecretKey<LOGN>,
     msg: &[u8],
@@ -378,21 +386,50 @@ fn sign_detached_with_rng_stream<const LOGN: u32>(
     comp: Compression,
     rng_stream: &mut ShakeContext,
 ) -> Result<DetachedSignature<LOGN>> {
+    let mut ws = SignRefWorkspace::<LOGN>::new();
+    sign_detached_with_rng_stream_in(secret, msg, nonce, comp, rng_stream, &mut ws)
+}
+
+fn sign_detached_with_rng_stream_in<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    msg: &[u8],
+    nonce: Nonce,
+    comp: Compression,
+    rng_stream: &mut ShakeContext,
+    ws: &mut SignRefWorkspace<LOGN>,
+) -> Result<DetachedSignature<LOGN>> {
     if !is_public_logn(LOGN) {
         return Err(Error::InvalidParameter);
     }
 
-    let hm = hash_message_to_point_binary(nonce.as_bytes(), msg, LOGN);
-    let prepared = prepare_signing_key(secret);
     let n = 1usize << LOGN;
-    let mut s1 = vec![0i16; n];
-    let mut s2 = vec![0i16; n];
+    let SignRefWorkspace {
+        hm,
+        s1,
+        s2,
+        prepared,
+        prepare_tmp,
+        sign_tmp,
+        seed: _,
+        nonce: _,
+    } = ws;
+
+    hash_message_to_point_binary_into(nonce.as_bytes(), msg, LOGN, &mut hm[..n]);
+    let prepared = prepare_signing_key_into(secret, prepared, sign_tmp, prepare_tmp);
 
     loop {
         let mut prng = Prng::new(rng_stream, PRNG_CHACHA20).ok_or(Error::Internal)?;
-        do_sign_binary(&mut s1, &mut s2, &prepared, &hm, &mut prng);
-        if is_short_binary(&s1, &s2, LOGN) {
-            let body = signature::encode(false, comp, LOGN, &s2).map_err(|_| Error::Internal)?;
+        do_sign_binary_in(
+            &mut s1[..n],
+            &mut s2[..n],
+            &prepared,
+            &hm[..n],
+            &mut prng,
+            sign_tmp,
+        );
+        if is_short_binary(&s1[..n], &s2[..n], LOGN) {
+            let body =
+                signature::encode(false, comp, LOGN, &s2[..n]).map_err(|_| Error::Internal)?;
             return Ok(DetachedSignature { nonce, body });
         }
     }
@@ -404,16 +441,41 @@ pub(crate) fn sign_ref<const LOGN: u32>(
     comp: Compression,
     rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<DetachedSignature<LOGN>> {
+    let mut ws = SignRefWorkspace::<LOGN>::new();
+    sign_ref_in(secret, msg, comp, rng, &mut ws)
+}
+
+pub(crate) fn sign_ref_in<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    msg: &[u8],
+    comp: Compression,
+    rng: &mut (impl RngCore + CryptoRng),
+    ws: &mut SignRefWorkspace<LOGN>,
+) -> Result<DetachedSignature<LOGN>> {
     let mut rng_stream = seed_prng_stream(rng)?;
-    let mut nonce = vec![0u8; DEFAULT_NONCE_LEN];
-    rng_stream.extract(&mut nonce);
-    sign_detached_with_rng_stream(
+    ws.nonce.clear();
+    ws.nonce.resize(DEFAULT_NONCE_LEN, 0);
+    rng_stream.extract(ws.nonce.as_mut_slice());
+    sign_detached_with_rng_stream_in(
         secret,
         msg,
-        Nonce(nonce.into_boxed_slice()),
+        Nonce(ws.nonce.clone().into_boxed_slice()),
         comp,
         &mut rng_stream,
+        ws,
     )
+}
+
+pub(crate) fn sign_ref_with_external_nonce_in<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    msg: &[u8],
+    nonce: Nonce,
+    comp: Compression,
+    rng: &mut (impl RngCore + CryptoRng),
+    ws: &mut SignRefWorkspace<LOGN>,
+) -> Result<DetachedSignature<LOGN>> {
+    let mut rng_stream = seed_prng_stream(rng)?;
+    sign_detached_with_rng_stream_in(secret, msg, nonce, comp, &mut rng_stream, ws)
 }
 
 pub(crate) fn sign_ref_with_external_nonce<const LOGN: u32>(
@@ -423,8 +485,8 @@ pub(crate) fn sign_ref_with_external_nonce<const LOGN: u32>(
     comp: Compression,
     rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<DetachedSignature<LOGN>> {
-    let mut rng_stream = seed_prng_stream(rng)?;
-    sign_detached_with_rng_stream(secret, msg, nonce, comp, &mut rng_stream)
+    let mut ws = SignRefWorkspace::<LOGN>::new();
+    sign_ref_with_external_nonce_in(secret, msg, nonce, comp, rng, &mut ws)
 }
 
 #[cfg(test)]

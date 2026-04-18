@@ -36,16 +36,26 @@ pub fn encode(values: &[u16], logn: u32) -> Result<Box<[u8]>> {
 
 pub fn decode(data: &[u8], logn: u32) -> Result<Box<[u16]>> {
     let n = binary_len(logn);
+    let mut out = vec![0u16; n];
+    decode_into(data, logn, &mut out)?;
+    Ok(out.into_boxed_slice())
+}
+
+pub fn decode_into(data: &[u8], logn: u32, out: &mut [u16]) -> Result<()> {
+    let n = binary_len(logn);
+    if out.len() != n {
+        return Err(Error::InvalidEncoding);
+    }
     let need = encoded_len(logn);
     if data.len() < need {
         return Err(Error::InvalidEncoding);
     }
 
-    let mut out = Vec::with_capacity(n);
     let mut acc = 0u32;
     let mut acc_len = 0usize;
     let mut used = 0usize;
-    while out.len() < n {
+    let mut filled = 0usize;
+    while filled < n {
         if used >= data.len() {
             return Err(Error::InvalidEncoding);
         }
@@ -58,12 +68,13 @@ pub fn decode(data: &[u8], logn: u32) -> Result<Box<[u16]>> {
             if w >= MODULUS {
                 return Err(Error::InvalidEncoding);
             }
-            out.push(w as u16);
+            out[filled] = w as u16;
+            filled += 1;
             acc &= (1u32 << acc_len) - 1;
         }
     }
     if acc != 0 {
         return Err(Error::InvalidEncoding);
     }
-    Ok(out.into_boxed_slice())
+    Ok(())
 }

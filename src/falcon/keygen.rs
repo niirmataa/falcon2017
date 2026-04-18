@@ -2,6 +2,7 @@
 
 use crate::encoding::public_key;
 use crate::error::{Error, Result};
+use crate::falcon::workspace::KeygenWorkspace;
 use crate::math::fft::{
     fft, ifft, poly_add, poly_add_muladj_fft, poly_adj_fft, poly_div_autoadj_fft,
     poly_invnorm2_fft, poly_mul_autoadj_fft, poly_mul_fft, poly_sub,
@@ -102,26 +103,41 @@ fn check_ortho_norm(f: &[i16], g: &[i16], logn: u32) -> bool {
     let mut rt1 = vec![fpr_of(0); n];
     let mut rt2 = vec![fpr_of(0); n];
     let mut rt3 = vec![fpr_of(0); n >> 1];
+    check_ortho_norm_in(f, g, logn, &mut rt1, &mut rt2, &mut rt3)
+}
 
-    poly_small_to_fp(&mut rt1, f, logn);
-    poly_small_to_fp(&mut rt2, g, logn);
-    fft(&mut rt1, logn);
-    fft(&mut rt2, logn);
-    poly_invnorm2_fft(&mut rt3, &rt1, &rt2, logn);
-    poly_adj_fft(&mut rt1, logn);
-    poly_adj_fft(&mut rt2, logn);
+fn check_ortho_norm_in(
+    f: &[i16],
+    g: &[i16],
+    logn: u32,
+    rt1: &mut [Fpr],
+    rt2: &mut [Fpr],
+    rt3: &mut [Fpr],
+) -> bool {
+    let n = 1usize << logn;
+    debug_assert_eq!(rt1.len(), n);
+    debug_assert_eq!(rt2.len(), n);
+    debug_assert_eq!(rt3.len(), n >> 1);
+
+    poly_small_to_fp(rt1, f, logn);
+    poly_small_to_fp(rt2, g, logn);
+    fft(rt1, logn);
+    fft(rt2, logn);
+    poly_invnorm2_fft(rt3, rt1, rt2, logn);
+    poly_adj_fft(rt1, logn);
+    poly_adj_fft(rt2, logn);
 
     let q = fpr_of(i64::from(QB));
-    for value in &mut rt1 {
+    for value in rt1.iter_mut() {
         *value = fpr_mul(*value, q);
     }
-    for value in &mut rt2 {
+    for value in rt2.iter_mut() {
         *value = fpr_mul(*value, q);
     }
-    poly_mul_autoadj_fft(&mut rt1, &rt3, logn);
-    poly_mul_autoadj_fft(&mut rt2, &rt3, logn);
-    ifft(&mut rt1, logn);
-    ifft(&mut rt2, logn);
+    poly_mul_autoadj_fft(rt1, rt3, logn);
+    poly_mul_autoadj_fft(rt2, rt3, logn);
+    ifft(rt1, logn);
+    ifft(rt2, logn);
 
     let mut norm = fpr_of(0);
     for u in 0..n {
@@ -156,6 +172,13 @@ fn mkgauss(rng: &mut KeygenShake, logn: u32) -> i32 {
 fn poly_small_mkgauss(rng: &mut KeygenShake, logn: u32) -> Vec<i16> {
     let n = 1usize << logn;
     let mut f = vec![0i16; n];
+    poly_small_mkgauss_in(rng, logn, &mut f);
+    f
+}
+
+fn poly_small_mkgauss_in(rng: &mut KeygenShake, logn: u32, f: &mut [i16]) {
+    let n = 1usize << logn;
+    debug_assert_eq!(f.len(), n);
     let mut mod2 = 0u32;
     for u in 0..n {
         loop {
@@ -171,27 +194,34 @@ fn poly_small_mkgauss(rng: &mut KeygenShake, logn: u32) -> Vec<i16> {
             break;
         }
     }
-    f
 }
 
 fn compute_public(f: &[i16], g: &[i16], logn: u32) -> Option<Box<[u16]>> {
     let n = 1usize << logn;
     let mut t = vec![0u16; n];
     let mut h = vec![0u16; n];
+    compute_public_in(f, g, logn, &mut t, &mut h)?;
+    Some(h.into_boxed_slice())
+}
+
+fn compute_public_in(f: &[i16], g: &[i16], logn: u32, t: &mut [u16], h: &mut [u16]) -> Option<()> {
+    let n = 1usize << logn;
+    debug_assert_eq!(t.len(), n);
+    debug_assert_eq!(h.len(), n);
     for u in 0..n {
         t[u] = mq_conv_small(i32::from(f[u]), QB) as u16;
         h[u] = mq_conv_small(i32::from(g[u]), QB) as u16;
     }
-    mq_ntt_binary(&mut h, logn);
-    mq_ntt_binary(&mut t, logn);
+    mq_ntt_binary(h, logn);
+    mq_ntt_binary(t, logn);
     for u in 0..n {
         if t[u] == 0 {
             return None;
         }
         h[u] = mq_div_12289(u32::from(h[u]), u32::from(t[u])) as u16;
     }
-    mq_intt_binary(&mut h, logn);
-    Some(h.into_boxed_slice())
+    mq_intt_binary(h, logn);
+    Some(())
 }
 
 pub(crate) fn derive_public_from_secret<const LOGN: u32>(
@@ -228,40 +258,65 @@ fn poly_i8_from_i16(values: &[i16]) -> Result<Box<[i8]>> {
 }
 
 fn keygen_ref_from_shake<const LOGN: u32>(rng: &mut KeygenShake) -> Result<Keypair<LOGN>> {
+    let mut ws = KeygenWorkspace::<LOGN>::new();
+    keygen_ref_from_shake_in(rng, &mut ws)
+}
+
+fn keygen_ref_from_shake_in<const LOGN: u32>(
+    rng: &mut KeygenShake,
+    ws: &mut KeygenWorkspace<LOGN>,
+) -> Result<Keypair<LOGN>> {
     if !is_public_logn(LOGN) {
         return Err(Error::InvalidParameter);
     }
 
-    loop {
-        let f = poly_small_mkgauss(rng, LOGN);
-        let g = poly_small_mkgauss(rng, LOGN);
+    let KeygenWorkspace {
+        f,
+        g,
+        ortho_rt1,
+        ortho_rt2,
+        ortho_rt3,
+        t,
+        h,
+    } = ws;
+    let n = 1usize << LOGN;
 
-        let normf = poly_small_sqnorm(&f, LOGN);
-        let normg = poly_small_sqnorm(&g, LOGN);
+    loop {
+        poly_small_mkgauss_in(rng, LOGN, &mut f[..n]);
+        poly_small_mkgauss_in(rng, LOGN, &mut g[..n]);
+
+        let normf = poly_small_sqnorm(&f[..n], LOGN);
+        let normg = poly_small_sqnorm(&g[..n], LOGN);
         let norm = normf.wrapping_add(normg) | 0u32.wrapping_sub((normf | normg) >> 31);
         if norm >= 16_823 {
             continue;
         }
-        if !check_ortho_norm(&f, &g, LOGN) {
+        if !check_ortho_norm_in(
+            &f[..n],
+            &g[..n],
+            LOGN,
+            &mut ortho_rt1[..n],
+            &mut ortho_rt2[..n],
+            &mut ortho_rt3[..(n >> 1)],
+        ) {
             continue;
         }
 
-        let h = match compute_public(&f, &g, LOGN) {
-            Some(h) => h,
-            None => continue,
-        };
-        let (big_f, big_g) = match solve_ntru(&f, &g, LOGN) {
+        if compute_public_in(&f[..n], &g[..n], LOGN, &mut t[..n], &mut h[..n]).is_none() {
+            continue;
+        }
+        let (big_f, big_g) = match solve_ntru(&f[..n], &g[..n], LOGN) {
             Some(result) => result,
             None => continue,
         };
 
         let public = PublicKey {
-            bytes: public_key::encode(false, LOGN, &h).map_err(|_| Error::Internal)?,
+            bytes: public_key::encode(false, LOGN, &h[..n]).map_err(|_| Error::Internal)?,
         };
         let secret = SecretKey {
             inner: SecretKeyInner {
-                f: poly_i8_from_i16(&f)?,
-                g: poly_i8_from_i16(&g)?,
+                f: poly_i8_from_i16(&f[..n])?,
+                g: poly_i8_from_i16(&g[..n])?,
                 big_f: poly_i8_from_i16(&big_f)?,
                 big_g: poly_i8_from_i16(&big_g)?,
             },
@@ -280,8 +335,26 @@ pub(crate) fn keygen_with_rng<const LOGN: u32>(
 }
 
 pub(crate) fn keygen_from_seed_material<const LOGN: u32>(seed: &[u8]) -> Result<Keypair<LOGN>> {
+    let mut ws = KeygenWorkspace::<LOGN>::new();
+    keygen_from_seed_material_in(seed, &mut ws)
+}
+
+pub(crate) fn keygen_with_rng_in<const LOGN: u32>(
+    rng: &mut (impl RngCore + CryptoRng),
+    ws: &mut KeygenWorkspace<LOGN>,
+) -> Result<Keypair<LOGN>> {
+    let mut seed = [0u8; 32];
+    rng.try_fill_bytes(&mut seed)
+        .map_err(|_| Error::Randomness)?;
+    keygen_from_seed_material_in::<LOGN>(&seed, ws)
+}
+
+pub(crate) fn keygen_from_seed_material_in<const LOGN: u32>(
+    seed: &[u8],
+    ws: &mut KeygenWorkspace<LOGN>,
+) -> Result<Keypair<LOGN>> {
     let mut rng = KeygenShake::from_seed(seed);
-    keygen_ref_from_shake::<LOGN>(&mut rng)
+    keygen_ref_from_shake_in::<LOGN>(&mut rng, ws)
 }
 
 fn poly_max_bitlength(f: &[u32], flen: usize, fstride: usize, logn: u32) -> u32 {

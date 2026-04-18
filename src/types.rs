@@ -6,6 +6,7 @@ use crate::error::{Error, Result};
 use crate::falcon::keygen;
 use crate::falcon::sign_ref;
 use crate::falcon::verify;
+use crate::falcon::workspace::{KeygenWorkspace, SignRefWorkspace, VerifyWorkspace};
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
 use crate::rng::shake256::ShakeContext;
 use rand_core::{CryptoRng, RngCore};
@@ -97,9 +98,24 @@ impl Falcon512 {
         keygen::keygen_with_rng::<FALCON512_LOGN>(rng)
     }
 
+    pub fn keygen_in(
+        rng: &mut (impl RngCore + CryptoRng),
+        ws: &mut KeygenWorkspace<FALCON512_LOGN>,
+    ) -> Result<Falcon512Keypair> {
+        keygen::keygen_with_rng_in::<FALCON512_LOGN>(rng, ws)
+    }
+
     #[cfg(feature = "deterministic-tests")]
     pub fn keygen_from_seed(seed: &[u8]) -> Result<Falcon512Keypair> {
         keygen::keygen_from_seed_material::<FALCON512_LOGN>(seed)
+    }
+
+    #[cfg(feature = "deterministic-tests")]
+    pub fn keygen_from_seed_in(
+        seed: &[u8],
+        ws: &mut KeygenWorkspace<FALCON512_LOGN>,
+    ) -> Result<Falcon512Keypair> {
+        keygen::keygen_from_seed_material_in::<FALCON512_LOGN>(seed, ws)
     }
 }
 
@@ -108,9 +124,24 @@ impl Falcon1024 {
         keygen::keygen_with_rng::<FALCON1024_LOGN>(rng)
     }
 
+    pub fn keygen_in(
+        rng: &mut (impl RngCore + CryptoRng),
+        ws: &mut KeygenWorkspace<FALCON1024_LOGN>,
+    ) -> Result<Falcon1024Keypair> {
+        keygen::keygen_with_rng_in::<FALCON1024_LOGN>(rng, ws)
+    }
+
     #[cfg(feature = "deterministic-tests")]
     pub fn keygen_from_seed(seed: &[u8]) -> Result<Falcon1024Keypair> {
         keygen::keygen_from_seed_material::<FALCON1024_LOGN>(seed)
+    }
+
+    #[cfg(feature = "deterministic-tests")]
+    pub fn keygen_from_seed_in(
+        seed: &[u8],
+        ws: &mut KeygenWorkspace<FALCON1024_LOGN>,
+    ) -> Result<Falcon1024Keypair> {
+        keygen::keygen_from_seed_material_in::<FALCON1024_LOGN>(seed, ws)
     }
 }
 
@@ -156,6 +187,16 @@ impl<const LOGN: u32> SecretKey<LOGN> {
         sign_ref::sign_ref(self, msg, comp, rng)
     }
 
+    pub fn sign_ref_in(
+        &self,
+        msg: &[u8],
+        comp: Compression,
+        rng: &mut (impl RngCore + CryptoRng),
+        ws: &mut SignRefWorkspace<LOGN>,
+    ) -> Result<DetachedSignature<LOGN>> {
+        sign_ref::sign_ref_in(self, msg, comp, rng, ws)
+    }
+
     pub fn sign_ref_with_external_nonce(
         &self,
         msg: &[u8],
@@ -164,6 +205,17 @@ impl<const LOGN: u32> SecretKey<LOGN> {
         rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<DetachedSignature<LOGN>> {
         sign_ref::sign_ref_with_external_nonce(self, msg, nonce, comp, rng)
+    }
+
+    pub fn sign_ref_with_external_nonce_in(
+        &self,
+        msg: &[u8],
+        nonce: Nonce,
+        comp: Compression,
+        rng: &mut (impl RngCore + CryptoRng),
+        ws: &mut SignRefWorkspace<LOGN>,
+    ) -> Result<DetachedSignature<LOGN>> {
+        sign_ref::sign_ref_with_external_nonce_in(self, msg, nonce, comp, rng, ws)
     }
 
     pub fn expand_ct_strict(&self) -> Result<ExpandedSecretKeyCt<LOGN>> {
@@ -220,11 +272,29 @@ impl<const LOGN: u32> PublicKey<LOGN> {
     pub fn verify_detached(&self, msg: &[u8], sig: &DetachedSignature<LOGN>) -> Result<()> {
         verify::verify_detached(self, msg, sig)
     }
+
+    pub fn verify_detached_in(
+        &self,
+        msg: &[u8],
+        sig: &DetachedSignature<LOGN>,
+        ws: &mut VerifyWorkspace<LOGN>,
+    ) -> Result<()> {
+        verify::verify_detached_in(self, msg, sig, ws)
+    }
 }
 
 impl<const LOGN: u32> PreparedPublicKey<LOGN> {
     pub fn verify_detached(&self, msg: &[u8], sig: &DetachedSignature<LOGN>) -> Result<()> {
         verify::verify_prepared_detached(self, msg, sig)
+    }
+
+    pub fn verify_detached_in(
+        &self,
+        msg: &[u8],
+        sig: &DetachedSignature<LOGN>,
+        ws: &mut VerifyWorkspace<LOGN>,
+    ) -> Result<()> {
+        verify::verify_prepared_detached_in(self, msg, sig, ws)
     }
 
     pub fn verifier(&self, nonce: &Nonce) -> Verifier<LOGN> {
