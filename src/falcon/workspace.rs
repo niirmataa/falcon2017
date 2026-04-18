@@ -98,19 +98,26 @@ impl<const LOGN: u32> Default for SignRefWorkspace<LOGN> {
     }
 }
 
-/// Preallocated scratch space for advanced strict-CT bridge signing.
-///
-/// Step 28 keeps a distinct public workspace type for the strict-CT API even
-/// though the current bridge signer still reuses the reference signing scratch
-/// layout internally.
+/// Preallocated scratch space for advanced strict-CT signing.
 pub struct SignCtWorkspace<const LOGN: u32> {
-    pub(crate) inner: SignRefWorkspace<LOGN>,
+    pub(crate) hm: Vec<u16>,
+    pub(crate) s1: Vec<i16>,
+    pub(crate) s2: Vec<i16>,
+    pub(crate) prepared_ref: Vec<Fpr>,
+    pub(crate) sign_tmp_ref: Vec<Fpr>,
+    pub(crate) nonce: Vec<u8>,
 }
 
 impl<const LOGN: u32> SignCtWorkspace<LOGN> {
     pub fn new() -> Self {
+        let n = 1usize << LOGN;
         Self {
-            inner: SignRefWorkspace::new(),
+            hm: vec![0; n],
+            s1: vec![0; n],
+            s2: vec![0; n],
+            prepared_ref: vec![Fpr::new(0.0); expanded_ref_key_len(LOGN)],
+            sign_tmp_ref: vec![Fpr::new(0.0); 6 * n],
+            nonce: Vec::with_capacity(40),
         }
     }
 }
@@ -189,5 +196,17 @@ impl<const LOGN: u32> Drop for SignRefWorkspace<LOGN> {
 impl<const LOGN: u32> Drop for ExpandCtWorkspace<LOGN> {
     fn drop(&mut self) {
         self.prepared_bits.as_mut_slice().zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl<const LOGN: u32> Drop for SignCtWorkspace<LOGN> {
+    fn drop(&mut self) {
+        self.hm.as_mut_slice().zeroize();
+        self.s1.as_mut_slice().zeroize();
+        self.s2.as_mut_slice().zeroize();
+        zeroize_fpr(&mut self.prepared_ref);
+        zeroize_fpr(&mut self.sign_tmp_ref);
+        self.nonce.as_mut_slice().zeroize();
     }
 }

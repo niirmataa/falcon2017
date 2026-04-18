@@ -97,3 +97,50 @@ Weryfikacja Kroku 28:
   `sign_ct_strict_in()` i zgodność one-shot/workspace na tych samych seedach i nonce,
 - pełne `cargo test` oraz `cargo test --no-default-features --features ct-strict` przechodzą na
   zielono.
+
+## Krok 29
+
+Stan po Kroku 29:
+- `src/falcon/sign_ct_strict.rs`, `src/sampler/sign_ct_strict.rs`, `src/falcon/expand_ct.rs` i
+  `src/math/fft_soft.rs` nie importują już bezpośrednio `ref_f64` ani `libm`,
+- `gaussian0_sampler_ct()` nie ma już wczesnego wyjścia po CDF i zużywa stały budżet PRNG dla
+  pojedynczej próby,
+- `SignCtWorkspace<LOGN>` ma własny scratch i `Drop + zeroize` dla buforów strict-path,
+- dodany został prywatny groundwork `src/math/fft_soft.rs` oraz tabela
+  `src/math/fft_gm_bits_table.rs`, ale ten executor nie jest jeszcze domyślną ścieżką runtime.
+
+Wynik audytu Kroku 29:
+- publiczne moduły strict zostały odcięte od bezpośrednich importów `ref_f64`,
+- strict signer używa już strict samplera z Kroku 25,
+- jednocześnie wykonanie signing math pozostaje jeszcze spięte przez prywatny helper
+  `src/falcon/sign_ct_bridge_ref.rs`, więc **Bramka C1.3 (`ct_strict` nie używa `f64`) nadal nie
+  jest zamknięta**.
+
+Weryfikacja Kroku 29:
+- `tests/ct_consistency.rs` ma audyt źródeł `strict_modules_do_not_directly_import_ref_f64_or_libm`,
+- testy strict roundtrip dla 512 i 1024 przechodzą na zielono,
+- `cargo test --test ct_consistency`, `cargo test sign_ct_strict` i pełne `cargo test` przechodzą
+  w WSL Alpine.
+
+## Krok 30
+
+Stan po Kroku 30:
+- `tests/ct_consistency.rs` domyka publiczne testy strict-path: roundtrip
+  `verify(sign_ct_strict(...))`, parity nagłówka/wire formatu `ref` vs `ct_strict` dla
+  `Compression::{None, Static}` oraz timing smoke na stałych seedach,
+- `src/sampler/sign_ct_strict.rs` ma distribution smoke i timing smoke dla strict samplera,
+- `fuzz/decode_signature` jest kompilowalnym harnesssem `libFuzzer` dla wspólnego dekodera
+  podpisu używanego przez `ref` i `ct_strict`.
+
+Wynik Kroku 30:
+- domknięty jest audyt testowy i regresyjny dla strict surface oraz shared signature decode,
+- jednocześnie **Bramka C1.3 nadal pozostaje otwarta**, bo runtime strict signing wciąż przechodzi
+  przez prywatny bridge `src/falcon/sign_ct_bridge_ref.rs`, więc wykonanie nadal zależy od
+  referencyjnego backendu `ref_f64`.
+
+Weryfikacja Kroku 30:
+- `cargo test --test ct_consistency`,
+- `cargo test sampler::sign_ct_strict`,
+- `cargo test --no-default-features --features ct-strict`,
+- `CXX=clang++ cargo check --manifest-path fuzz/Cargo.toml`,
+- pełne `cargo test` w WSL Alpine.

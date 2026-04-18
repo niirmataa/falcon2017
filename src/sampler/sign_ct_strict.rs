@@ -1,7 +1,7 @@
 //! Strict signing sampler following the Falcon/Extra `SAMPLER_CDF=1`
 //! and `CT_BEREXP=1` path.
 
-use crate::math::fpr::ref_f64::{
+use crate::math::fpr::soft::{
     fpr_div, fpr_exp_small, fpr_floor, fpr_inv, fpr_mul, fpr_neg, fpr_of, fpr_rint, fpr_sqr,
     fpr_sub, Fpr, FPR_LOG2, FPR_P55,
 };
@@ -118,12 +118,18 @@ const CDF: [Z128; 27] = [
 fn gaussian0_sampler_ct(prng: &mut Prng) -> i32 {
     let hi = prng.get_u64();
     let lo = prng.get_u64();
+    let mut sample = 0i32;
+    let mut found = 0u64;
     for (z, cdf) in CDF.iter().enumerate() {
-        if hi > cdf.hi || (hi == cdf.hi && lo >= cdf.lo) {
-            return z as i32;
-        }
+        let gt_hi = (cdf.hi.wrapping_sub(hi) >> 63) & 1;
+        let eq_hi = u64::from(hi == cdf.hi);
+        let ge_lo = u64::from(lo >= cdf.lo);
+        let ge = gt_hi | (eq_hi & ge_lo);
+        let take = ge & (!found);
+        sample ^= (sample ^ z as i32) & (0i32.wrapping_sub(take as i32));
+        found |= ge;
     }
-    unreachable!("CDF terminator must be reached");
+    sample
 }
 
 fn ber_exp_ct(prng: &mut Prng, x: Fpr) -> bool {
@@ -167,9 +173,13 @@ pub(crate) fn sample_binary_ct(prng: &mut Prng, mu: Fpr, sigma: Fpr) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::{ber_exp_ct, gaussian0_sampler_ct, sample_binary_ct};
-    use crate::math::fpr::ref_f64::fpr;
     use crate::rng::prng::{Prng, PRNG_CHACHA20};
     use crate::rng::shake256::ShakeContext;
+    use std::time::Instant;
+
+    fn fpr(x: f64) -> crate::math::fpr::soft::Fpr {
+        crate::math::fpr::soft::Fpr::from_bits(x.to_bits())
+    }
 
     fn prng_from_seed(seed: &[u8]) -> Prng {
         let mut shake = ShakeContext::shake256();
@@ -216,5 +226,95 @@ mod tests {
         ];
 
         assert_eq!(got, [0, 0, 2, 1, 4, -1]);
+    }
+
+    #[test]
+    fn strict_sampler_distribution_smoke_is_centered() {
+        let mut prng = prng_from_seed(b"falcon2017-step30-sampler-distrib");
+        let mu = fpr(0.0);
+        let sigma = fpr(1.8205);
+
+        let mut sum = 0i64;
+        let mut positive = 0usize;
+        let mut negative = 0usize;
+        let mut zero = 0usize;
+        let mut max_abs = 0i32;
+
+        for _ in 0..4096 {
+            let sample = sample_binary_ct(&mut prng, mu, sigma);
+            sum += i64::from(sample);
+            if sample > 0 {
+                positive += 1;
+            } else if sample < 0 {
+                negative += 1;
+            } else {
+                zero += 1;
+            }
+            max_abs = max_abs.max(sample.abs());
+        }
+
+        assert!(
+            positive >= 800 && negative >= 800,
+            "one side of the distribution is under-exercised: +{positive} -{negative}",
+        );
+        assert!(
+            (900..=2200).contains(&zero),
+            "zero count outside smoke range: {zero}",
+        );
+        assert!(
+            sum.abs() <= 1400,
+            "distribution drift outside smoke range: sum={sum}",
+        );
+        assert!(max_abs >= 4, "tails not exercised, max_abs={max_abs}");
+    }
+
+    #[test]
+    fn gaussian0_sampler_timing_smoke_is_stable() {
+        let mut prng_a = prng_from_seed(b"falcon2017-step30-gauss-time-a");
+        let mut prng_b = prng_from_seed(b"falcon2017-step30-gauss-time-b");
+
+        let start_a = Instant::now();
+        for _ in 0..50_000 {
+            let _ = gaussian0_sampler_ct(&mut prng_a);
+        }
+        let dur_a = start_a.elapsed().as_nanos().max(1);
+
+        let start_b = Instant::now();
+        for _ in 0..50_000 {
+            let _ = gaussian0_sampler_ct(&mut prng_b);
+        }
+        let dur_b = start_b.elapsed().as_nanos().max(1);
+
+        let ratio_num = dur_a.max(dur_b);
+        let ratio_den = dur_a.min(dur_b);
+        assert!(
+            ratio_num <= ratio_den * 4,
+            "gaussian0 timing drift too large: {dur_a} vs {dur_b}",
+        );
+    }
+
+    #[test]
+    fn ber_exp_timing_smoke_is_stable() {
+        let mut prng_a = prng_from_seed(b"falcon2017-step30-berexp-time-a");
+        let mut prng_b = prng_from_seed(b"falcon2017-step30-berexp-time-b");
+
+        let start_a = Instant::now();
+        for _ in 0..50_000 {
+            let _ = ber_exp_ct(&mut prng_a, fpr(0.4375));
+        }
+        let dur_a = start_a.elapsed().as_nanos().max(1);
+
+        let start_b = Instant::now();
+        for _ in 0..50_000 {
+            let _ = ber_exp_ct(&mut prng_b, fpr(0.4375));
+        }
+        let dur_b = start_b.elapsed().as_nanos().max(1);
+
+        let ratio_num = dur_a.max(dur_b);
+        let ratio_den = dur_a.min(dur_b);
+        assert!(
+            ratio_num <= ratio_den * 4,
+            "ber_exp timing drift too large: {dur_a} vs {dur_b}",
+        );
     }
 }

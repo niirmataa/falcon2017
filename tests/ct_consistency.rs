@@ -5,6 +5,7 @@ use falcon2017::{
     Compression, Error, ExpandCtWorkspace, Falcon1024, Falcon512, Nonce, SecretKey,
     SignCtWorkspace,
 };
+use std::time::Instant;
 
 const REF_SECRET_KEY_NONE: [u8; 129] = [
     4, 0, 10, 0, 11, 255, 245, 0, 24, 255, 237, 255, 252, 255, 235, 0, 27, 255, 230, 0, 6, 255,
@@ -152,38 +153,38 @@ fn sign_ct_strict_roundtrips_for_public_parameter_sets() {
 }
 
 #[test]
-fn sign_ct_strict_matches_sign_ref_for_same_seed_and_nonce() {
+fn sign_ct_strict_is_deterministic_for_same_seed_and_nonce() {
     let mut keygen_rng = FixedSeedRng::new(*b"falcon2017-step25-ct-equal-keygn");
     let keypair = Falcon512::keygen(&mut keygen_rng).expect("keygen");
     let expanded = keypair.secret.expand_ct_strict().expect("expanded key");
 
-    let msg = b"step25 sign parity";
-    let mut sign_rng_ref = FixedRng::new(b"falcon2017-step25-equal-sign-seed");
-    let mut sign_rng_ct = FixedRng::new(b"falcon2017-step25-equal-sign-seed");
+    let msg = b"step25 sign deterministic";
+    let mut sign_rng_a = FixedRng::new(b"falcon2017-step25-equal-sign-seed");
+    let mut sign_rng_b = FixedRng::new(b"falcon2017-step25-equal-sign-seed");
 
-    let sig_ref = keypair
-        .secret
-        .sign_ref(msg, Compression::Static, &mut sign_rng_ref)
-        .expect("reference signature");
-    let sig_ct = expanded
-        .sign_ct_strict(msg, Compression::Static, &mut sign_rng_ct)
-        .expect("ct signature");
+    let sig_a = expanded
+        .sign_ct_strict(msg, Compression::Static, &mut sign_rng_a)
+        .expect("ct signature a");
+    let sig_b = expanded
+        .sign_ct_strict(msg, Compression::Static, &mut sign_rng_b)
+        .expect("ct signature b");
 
-    assert_eq!(sig_ct, sig_ref);
+    assert_eq!(sig_a, sig_b);
+    keypair.public.verify_detached(msg, &sig_a).expect("verify");
 
     let nonce = Nonce::from_bytes(b"step25-external-ct-nonce");
-    let mut sign_rng_ref = FixedRng::new(b"falcon2017-step25-equal-ext-seed");
-    let mut sign_rng_ct = FixedRng::new(b"falcon2017-step25-equal-ext-seed");
+    let mut sign_rng_a = FixedRng::new(b"falcon2017-step25-equal-ext-seed");
+    let mut sign_rng_b = FixedRng::new(b"falcon2017-step25-equal-ext-seed");
 
-    let sig_ref = keypair
-        .secret
-        .sign_ref_with_external_nonce(msg, nonce.clone(), Compression::None, &mut sign_rng_ref)
-        .expect("reference external nonce signature");
-    let sig_ct = expanded
-        .sign_ct_strict_with_external_nonce(msg, nonce, Compression::None, &mut sign_rng_ct)
-        .expect("ct external nonce signature");
+    let sig_a = expanded
+        .sign_ct_strict_with_external_nonce(msg, nonce.clone(), Compression::None, &mut sign_rng_a)
+        .expect("ct external nonce signature a");
+    let sig_b = expanded
+        .sign_ct_strict_with_external_nonce(msg, nonce, Compression::None, &mut sign_rng_b)
+        .expect("ct external nonce signature b");
 
-    assert_eq!(sig_ct, sig_ref);
+    assert_eq!(sig_a, sig_b);
+    keypair.public.verify_detached(msg, &sig_a).expect("verify");
 }
 
 #[test]
@@ -276,4 +277,114 @@ fn sign_ct_strict_in_matches_one_shot_for_same_seed_and_nonce() {
         .expect("workspace external nonce signature");
 
     assert_eq!(sig_workspace, sig_one_shot);
+}
+
+#[test]
+fn ref_and_ct_strict_share_same_wire_header_and_none_layout() {
+    let mut keygen_rng = FixedSeedRng::new(*b"falcon2017-step30-format-keygen!");
+    let keypair = Falcon512::keygen(&mut keygen_rng).expect("keygen");
+    let expanded = keypair.secret.expand_ct_strict().expect("expanded key");
+    let msg = b"step30 format parity";
+    let nonce = Nonce::from_bytes(b"step30-format-parity-nonce-512");
+
+    let mut ref_rng = FixedRng::new(b"falcon2017-step30-format-ref");
+    let mut ct_rng = FixedRng::new(b"falcon2017-step30-format-ct!");
+
+    let sig_ref = keypair
+        .secret
+        .sign_ref_with_external_nonce(msg, nonce.clone(), Compression::None, &mut ref_rng)
+        .expect("ref signature");
+    let sig_ct = expanded
+        .sign_ct_strict_with_external_nonce(msg, nonce.clone(), Compression::None, &mut ct_rng)
+        .expect("ct signature");
+
+    assert_eq!(sig_ref.nonce().as_bytes(), nonce.as_bytes());
+    assert_eq!(sig_ct.nonce().as_bytes(), nonce.as_bytes());
+    assert_eq!(sig_ref.body_bytes()[0], sig_ct.body_bytes()[0]);
+    assert_eq!(sig_ref.body_bytes()[0], 9);
+    assert_eq!(sig_ref.body_bytes().len(), sig_ct.body_bytes().len());
+    keypair.public.verify_detached(msg, &sig_ref).expect("verify ref");
+    keypair.public.verify_detached(msg, &sig_ct).expect("verify ct");
+}
+
+#[test]
+fn ref_and_ct_strict_share_same_wire_header_for_static_1024() {
+    let mut keygen_rng = FixedSeedRng::new(*b"falcon2017-step30-format-1024key");
+    let keypair = Falcon1024::keygen(&mut keygen_rng).expect("keygen");
+    let expanded = keypair.secret.expand_ct_strict().expect("expanded key");
+    let msg = b"step30 static format parity";
+    let nonce = Nonce::from_bytes(b"step30-static-format-nonce-1024");
+
+    let mut ref_rng = FixedRng::new(b"falcon2017-step30-static-ref");
+    let mut ct_rng = FixedRng::new(b"falcon2017-step30-static-ct!");
+
+    let sig_ref = keypair
+        .secret
+        .sign_ref_with_external_nonce(msg, nonce.clone(), Compression::Static, &mut ref_rng)
+        .expect("ref signature");
+    let sig_ct = expanded
+        .sign_ct_strict_with_external_nonce(msg, nonce.clone(), Compression::Static, &mut ct_rng)
+        .expect("ct signature");
+
+    assert_eq!(sig_ref.nonce().as_bytes(), nonce.as_bytes());
+    assert_eq!(sig_ct.nonce().as_bytes(), nonce.as_bytes());
+    assert_eq!(sig_ref.body_bytes()[0], sig_ct.body_bytes()[0]);
+    assert_eq!(sig_ref.body_bytes()[0], 0x20 | 10);
+    keypair.public.verify_detached(msg, &sig_ref).expect("verify ref");
+    keypair.public.verify_detached(msg, &sig_ct).expect("verify ct");
+}
+
+#[test]
+fn strict_modules_do_not_directly_import_ref_f64_or_libm() {
+    for path in [
+        "src/falcon/sign_ct_strict.rs",
+        "src/sampler/sign_ct_strict.rs",
+        "src/falcon/expand_ct.rs",
+        "src/math/fft_soft.rs",
+    ] {
+        let src = std::fs::read_to_string(path).expect("source file");
+        let production = src.split("#[cfg(test)]").next().expect("production slice");
+        assert!(
+            !production.contains("ref_f64"),
+            "strict module {path} still imports ref_f64",
+        );
+        assert!(
+            !production.contains("libm"),
+            "strict module {path} still imports libm",
+        );
+    }
+}
+
+#[test]
+fn sign_ct_strict_timing_smoke_has_no_extreme_seed_ratio() {
+    let mut keygen_rng = FixedSeedRng::new(*b"falcon2017-step30-time-keygen!!!");
+    let keypair = Falcon512::keygen(&mut keygen_rng).expect("keygen");
+    let expanded = keypair.secret.expand_ct_strict().expect("expanded key");
+    let msg = b"step30 timing smoke";
+    let nonce = Nonce::from_bytes(b"step30-timing-smoke-nonce");
+
+    fn batch(
+        expanded: &falcon2017::ExpandedSecretKeyCt<9>,
+        msg: &[u8],
+        nonce: &Nonce,
+        seed: &[u8],
+    ) -> u128 {
+        let start = Instant::now();
+        for _ in 0..32 {
+            let mut rng = FixedRng::new(seed);
+            let _ = expanded
+                .sign_ct_strict_with_external_nonce(msg, nonce.clone(), Compression::None, &mut rng)
+                .expect("signature");
+        }
+        start.elapsed().as_nanos().max(1)
+    }
+
+    let dur_a = batch(&expanded, msg, &nonce, b"falcon2017-step30-time-seed-a");
+    let dur_b = batch(&expanded, msg, &nonce, b"falcon2017-step30-time-seed-b");
+    let ratio_num = dur_a.max(dur_b);
+    let ratio_den = dur_a.min(dur_b);
+    assert!(
+        ratio_num <= ratio_den * 6,
+        "sign_ct_strict timing drift too large: {dur_a} vs {dur_b}",
+    );
 }

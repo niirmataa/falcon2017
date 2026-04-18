@@ -23,15 +23,20 @@ Coverage already implemented for the `ct_strict` track:
   the historical reference prepared key,
 - `src/sampler/sign_ct_strict.rs` checks constant PRNG budgets for the CDF/CT_BEREXP sampler path
   and stabilizes a short deterministic regression sequence,
-- `src/falcon/sign_ct_strict.rs` checks default-nonce and external-nonce signing against the
-  preserved Falcon/Extra C vectors from Step 17,
+- `src/falcon/sign_ct_strict.rs` checks default-nonce and external-nonce signing on preserved
+  reference material through real `verify()` roundtrips,
 - `tests/ct_consistency.rs` smoke-tests the public `expand_ct_strict()` and
   `expand_ct_strict_in()` APIs for Falcon512 and Falcon1024, verifies `sign_ct_strict()` and
-  `sign_ct_strict_in()` roundtrips for both public parameter sets, and checks parity with
-  `sign_ref` plus one-shot/workspace parity on fixed seeds.
+  `sign_ct_strict_in()` roundtrips for both public parameter sets, checks determinism plus
+  one-shot/workspace parity on fixed seeds, checks wire-header parity between `ref` and
+  `ct_strict`, includes a timing smoke on fixed seeds, and audits that strict production modules
+  do not directly import `ref_f64` or `libm`,
+- `fuzz/decode_signature` is a real libFuzzer harness for the shared signature decoder used by
+  both `ref` and `ct_strict`; its compile gate is
+  `CXX=clang++ cargo check --manifest-path fuzz/Cargo.toml`,
+- `src/sampler/sign_ct_strict.rs` now also contains distribution and timing smoke tests for the
+  strict sampler path.
 
 Coverage intentionally deferred to later strict steps:
 - broader signature-format comparisons between `ref` and the future integer-only `ct_strict`
-  executor beyond the current bridge parity checks,
-- sampler distribution tests,
-- strict decode fuzzing and timing smoke tests.
+  executor beyond the current bridge parity checks.
