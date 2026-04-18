@@ -144,8 +144,7 @@ impl<const LOGN: u32> SecretKey<LOGN> {
     }
 
     pub fn derive_public(&self) -> Result<PublicKey<LOGN>> {
-        let _ = self;
-        Err(Error::Internal)
+        keygen::derive_public_from_secret(self)
     }
 
     pub fn sign_ref(

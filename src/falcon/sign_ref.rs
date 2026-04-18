@@ -8,7 +8,9 @@ use crate::math::fft::{
     fft, ifft, poly_add, poly_adj_fft, poly_merge_fft, poly_mul_fft, poly_muladj_fft,
     poly_mulconst, poly_mulselfadj_fft, poly_neg, poly_split_fft, poly_sub,
 };
-use crate::math::fpr::ref_f64::{fpr_div, fpr_inverse_of, fpr_mul, fpr_neg, fpr_of, fpr_rint, fpr_sqrt, Fpr};
+use crate::math::fpr::ref_f64::{
+    fpr_div, fpr_inverse_of, fpr_mul, fpr_neg, fpr_of, fpr_rint, fpr_sqrt, Fpr,
+};
 use crate::math::ntt::QB;
 use crate::params::{is_public_logn, DEFAULT_NONCE_LEN};
 use crate::rng::prng::{Prng, PRNG_CHACHA20};
@@ -216,7 +218,10 @@ fn prepare_signing_key<const LOGN: u32>(secret: &SecretKey<LOGN>) -> ExpandedRef
 
         let mut tmp = vec![fpr_of(0); 4 * n];
         ffldl_fft(tree, &g00, &g01, &g11, LOGN, &mut tmp);
-        let sigma = fpr_mul(fpr_sqrt(fpr_of(i64::from(QB))), fpr_div(fpr_of(155), fpr_of(100)));
+        let sigma = fpr_mul(
+            fpr_sqrt(fpr_of(i64::from(QB))),
+            fpr_div(fpr_of(155), fpr_of(100)),
+        );
         ffldl_binary_normalize(tree, sigma, LOGN);
     }
 
@@ -288,7 +293,13 @@ fn ffsampling_fft<S: FnMut(Fpr, Fpr) -> i32>(
     poly_merge_fft(z0, tmp_lo, tmp_hi, logn);
 }
 
-fn do_sign_binary(s1: &mut [i16], s2: &mut [i16], sk: &ExpandedRefKey, hm: &[u16], prng: &mut Prng) {
+fn do_sign_binary(
+    s1: &mut [i16],
+    s2: &mut [i16],
+    sk: &ExpandedRefKey,
+    hm: &[u16],
+    prng: &mut Prng,
+) {
     let logn = sk.logn;
     let n = 1usize << logn;
     let b00 = sk.b00();
@@ -381,8 +392,7 @@ fn sign_detached_with_rng_stream<const LOGN: u32>(
         let mut prng = Prng::new(rng_stream, PRNG_CHACHA20).ok_or(Error::Internal)?;
         do_sign_binary(&mut s1, &mut s2, &prepared, &hm, &mut prng);
         if is_short_binary(&s1, &s2, LOGN) {
-            let body =
-                signature::encode(false, comp, LOGN, &s2).map_err(|_| Error::Internal)?;
+            let body = signature::encode(false, comp, LOGN, &s2).map_err(|_| Error::Internal)?;
             return Ok(DetachedSignature { nonce, body });
         }
     }
@@ -477,8 +487,7 @@ mod tests {
 
     #[test]
     fn sign_ref_generates_default_40_byte_nonce_and_roundtrips() {
-        let keypair =
-            keygen_from_seed_material::<9>(b"falcon2017-step17-keypair").expect("keygen");
+        let keypair = keygen_from_seed_material::<9>(b"falcon2017-step17-keypair").expect("keygen");
         let mut rng = FixedRng::new(b"falcon2017-step17-sign-ref-seed");
         let sig = keypair
             .secret
@@ -546,13 +555,13 @@ mod tests {
     #[test]
     fn sign_ref_rejects_non_public_logn() {
         let sk = SecretKey::<4>::from_bytes(&[
-            4, 0, 10, 0, 11, 255, 245, 0, 24, 255, 237, 255, 252, 255, 235, 0, 27, 255, 230, 0,
-            6, 255, 239, 255, 255, 0, 39, 0, 5, 0, 18, 255, 244, 0, 24, 0, 25, 255, 252, 255,
-            241, 0, 6, 0, 14, 0, 28, 255, 253, 0, 20, 0, 27, 0, 53, 0, 17, 0, 1, 255, 215, 255,
-            218, 0, 31, 255, 242, 0, 51, 255, 225, 255, 195, 0, 13, 0, 26, 0, 55, 0, 43, 255,
-            232, 255, 248, 255, 255, 0, 33, 0, 3, 0, 34, 255, 232, 0, 51, 0, 55, 0, 20, 255, 231,
-            0, 61, 0, 52, 255, 255, 255, 214, 255, 255, 0, 49, 255, 242, 0, 36, 255, 229, 0, 10,
-            0, 5, 0, 3, 255, 192,
+            4, 0, 10, 0, 11, 255, 245, 0, 24, 255, 237, 255, 252, 255, 235, 0, 27, 255, 230, 0, 6,
+            255, 239, 255, 255, 0, 39, 0, 5, 0, 18, 255, 244, 0, 24, 0, 25, 255, 252, 255, 241, 0,
+            6, 0, 14, 0, 28, 255, 253, 0, 20, 0, 27, 0, 53, 0, 17, 0, 1, 255, 215, 255, 218, 0, 31,
+            255, 242, 0, 51, 255, 225, 255, 195, 0, 13, 0, 26, 0, 55, 0, 43, 255, 232, 255, 248,
+            255, 255, 0, 33, 0, 3, 0, 34, 255, 232, 0, 51, 0, 55, 0, 20, 255, 231, 0, 61, 0, 52,
+            255, 255, 255, 214, 255, 255, 0, 49, 255, 242, 0, 36, 255, 229, 0, 10, 0, 5, 0, 3, 255,
+            192,
         ])
         .expect("reference secret key");
         let mut rng = FixedRng::new(b"falcon2017-step17-invalid-logn");

@@ -115,10 +115,8 @@ fn refill_chacha20(prng: &mut Prng) {
             let start = (idx - 4) * 4;
             state[idx] = state[idx].wrapping_add(read_u32_le(&prng.state[start..start + 4]));
         }
-        state[14] = state[14]
-            .wrapping_add(read_u32_le(&prng.state[40..44]) ^ (cc as u32));
-        state[15] = state[15]
-            .wrapping_add(read_u32_le(&prng.state[44..48]) ^ ((cc >> 32) as u32));
+        state[14] = state[14].wrapping_add(read_u32_le(&prng.state[40..44]) ^ (cc as u32));
+        state[15] = state[15].wrapping_add(read_u32_le(&prng.state[44..48]) ^ ((cc >> 32) as u32));
         cc = cc.wrapping_add(1);
 
         for (idx, word) in state.iter().enumerate() {
@@ -280,14 +278,14 @@ mod tests {
     #[test]
     fn prng_first_block_matches_reference_c_vector() {
         let seed = [
-            0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-            22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+            0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
         ];
         let expected = [
-            205u8, 37, 60, 153, 35, 243, 201, 47, 54, 220, 160, 235, 118, 51, 153, 211, 247,
-            170, 11, 191, 116, 196, 132, 100, 80, 175, 93, 116, 236, 45, 234, 95, 103, 221, 198,
-            134, 141, 67, 228, 183, 188, 145, 123, 77, 111, 101, 72, 242, 123, 181, 197, 39, 46,
-            228, 191, 247, 4, 67, 99, 171, 109, 83, 171, 80,
+            205u8, 37, 60, 153, 35, 243, 201, 47, 54, 220, 160, 235, 118, 51, 153, 211, 247, 170,
+            11, 191, 116, 196, 132, 100, 80, 175, 93, 116, 236, 45, 234, 95, 103, 221, 198, 134,
+            141, 67, 228, 183, 188, 145, 123, 77, 111, 101, 72, 242, 123, 181, 197, 39, 46, 228,
+            191, 247, 4, 67, 99, 171, 109, 83, 171, 80,
         ];
 
         let mut shake = ShakeContext::shake256();

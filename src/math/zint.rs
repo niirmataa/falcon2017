@@ -1,7 +1,7 @@
 //! Big-integer helpers used by NTRU solving.
 
 use crate::math::modp::{
-    modp_add, modp_div, modp_montymul, modp_ninv31, modp_r, modp_r2, modp_sub,
+    modp_add, modp_montymul, modp_ninv31, modp_r2, modp_sub,
 };
 use crate::math::primes::primes2;
 
@@ -128,10 +128,9 @@ pub(crate) fn zint_rebuild_crt(
     tmp[0] = primes[0].p;
     for u in 1..xlen {
         let p = primes[u].p;
+        let s = primes[u].s;
         let p0i = modp_ninv31(p);
         let r2 = modp_r2(p, p0i);
-        let qmod = zint_mod_small_unsigned(&tmp[..u], p, p0i, r2);
-        let s = modp_div(modp_r(p), qmod, p, p0i, modp_r(p));
         for v in 0..num {
             let x = &mut xx[v * xstride..][..xlen];
             let xp = x[u];

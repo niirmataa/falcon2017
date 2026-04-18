@@ -159,8 +159,7 @@ fn ber_exp(prng: &mut Prng, x: Fpr) -> bool {
     let mut sw = s as u32;
     sw ^= (sw ^ 63) & 0u32.wrapping_sub((63u32.wrapping_sub(sw)) >> 31);
 
-    let z = (((fpr_rint(fpr_mul(fpr_exp_small(fpr_neg(r)), FPR_P63)) as u64) << 1)
-        .wrapping_sub(1))
+    let z = (((fpr_rint(fpr_mul(fpr_exp_small(fpr_neg(r)), FPR_P63)) as u64) << 1).wrapping_sub(1))
         >> sw;
 
     let mut i = 64usize;

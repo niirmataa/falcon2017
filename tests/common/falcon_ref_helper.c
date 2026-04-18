@@ -1,0 +1,166 @@
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "falcon.h"
+#include "internal.h"
+
+static uint8_t
+hex_nibble(char c)
+{
+	if (c >= '0' && c <= '9') {
+		return (uint8_t)(c - '0');
+	}
+	if (c >= 'a' && c <= 'f') {
+		return (uint8_t)(10 + (c - 'a'));
+	}
+	if (c >= 'A' && c <= 'F') {
+		return (uint8_t)(10 + (c - 'A'));
+	}
+	fprintf(stderr, "invalid hex digit: %c\n", c);
+	exit(EXIT_FAILURE);
+}
+
+static uint8_t *
+hex_to_bytes(const char *src, size_t *out_len)
+{
+	size_t len, u;
+	uint8_t *out;
+
+	len = strlen(src);
+	if ((len & 1u) != 0) {
+		fprintf(stderr, "hex string has odd length\n");
+		exit(EXIT_FAILURE);
+	}
+	out = malloc(len >> 1);
+	if (out == NULL) {
+		fprintf(stderr, "allocation failure\n");
+		exit(EXIT_FAILURE);
+	}
+	for (u = 0; u < len; u += 2) {
+		out[u >> 1] = (uint8_t)((hex_nibble(src[u]) << 4) | hex_nibble(src[u + 1]));
+	}
+	*out_len = len >> 1;
+	return out;
+}
+
+static void
+print_hex_field(const char *name, const uint8_t *buf, size_t len)
+{
+	size_t u;
+
+	printf("%s=", name);
+	for (u = 0; u < len; u ++) {
+		printf("%02x", buf[u]);
+	}
+	printf("\n");
+}
+
+static void
+print_u16_hex_field(const char *name, const uint16_t *buf, size_t len)
+{
+	size_t u;
+
+	printf("%s=", name);
+	for (u = 0; u < len; u ++) {
+		printf("%04x", (unsigned)buf[u]);
+	}
+	printf("\n");
+}
+
+static void
+cmd_keygen(unsigned logn, const char *seed_hex, int comp)
+{
+	falcon_keygen *fk;
+	size_t seed_len, sk_len, pk_len;
+	uint8_t *seed, *sk, *pk;
+
+	seed = hex_to_bytes(seed_hex, &seed_len);
+	fk = falcon_keygen_new(logn, 0);
+	if (fk == NULL) {
+		fprintf(stderr, "falcon_keygen_new failed\n");
+		exit(EXIT_FAILURE);
+	}
+	sk_len = falcon_keygen_max_privkey_size(fk);
+	pk_len = falcon_keygen_max_pubkey_size(fk);
+	sk = malloc(sk_len);
+	pk = malloc(pk_len);
+	if (sk == NULL || pk == NULL) {
+		fprintf(stderr, "allocation failure\n");
+		exit(EXIT_FAILURE);
+	}
+
+	falcon_keygen_set_seed(fk, seed, seed_len, 1);
+	if (!falcon_keygen_make(fk, comp, sk, &sk_len, pk, &pk_len)) {
+		fprintf(stderr, "falcon_keygen_make failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	print_hex_field("SK", sk, sk_len);
+	print_hex_field("PK", pk, pk_len);
+
+	falcon_keygen_free(fk);
+	free(seed);
+	free(sk);
+	free(pk);
+}
+
+static void
+cmd_hash_to_point_binary(unsigned logn, const char *nonce_hex, const char *msg_hex)
+{
+	shake_context sc;
+	size_t nonce_len, msg_len;
+	uint8_t *nonce, *msg;
+	uint16_t *c0;
+	size_t n;
+
+	nonce = hex_to_bytes(nonce_hex, &nonce_len);
+	msg = hex_to_bytes(msg_hex, &msg_len);
+	n = (size_t)1 << logn;
+	c0 = malloc(n * sizeof *c0);
+	if (c0 == NULL) {
+		fprintf(stderr, "allocation failure\n");
+		exit(EXIT_FAILURE);
+	}
+
+	shake_init(&sc, 512);
+	shake_inject(&sc, nonce, nonce_len);
+	shake_inject(&sc, msg, msg_len);
+	shake_flip(&sc);
+	falcon_hash_to_point(&sc, 12289, c0, logn);
+	print_u16_hex_field("C0", c0, n);
+
+	free(nonce);
+	free(msg);
+	free(c0);
+}
+
+int
+main(int argc, char *argv[])
+{
+	if (argc < 2) {
+		fprintf(stderr, "missing command\n");
+		return EXIT_FAILURE;
+	}
+	if (strcmp(argv[1], "keygen") == 0) {
+		if (argc != 5) {
+			fprintf(stderr, "usage: keygen <logn> <seed_hex> <comp>\n");
+			return EXIT_FAILURE;
+		}
+		cmd_keygen((unsigned)strtoul(argv[2], NULL, 10), argv[3], atoi(argv[4]));
+		return EXIT_SUCCESS;
+	}
+	if (strcmp(argv[1], "hash_to_point_binary") == 0) {
+		if (argc != 5) {
+			fprintf(stderr,
+				"usage: hash_to_point_binary <logn> <nonce_hex> <msg_hex>\n");
+			return EXIT_FAILURE;
+		}
+		cmd_hash_to_point_binary((unsigned)strtoul(argv[2], NULL, 10),
+			argv[3], argv[4]);
+		return EXIT_SUCCESS;
+	}
+	fprintf(stderr, "unknown command: %s\n", argv[1]);
+	return EXIT_FAILURE;
+}

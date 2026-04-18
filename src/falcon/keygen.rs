@@ -194,6 +194,31 @@ fn compute_public(f: &[i16], g: &[i16], logn: u32) -> Option<Box<[u16]>> {
     Some(h.into_boxed_slice())
 }
 
+pub(crate) fn derive_public_from_secret<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+) -> Result<PublicKey<LOGN>> {
+    if !is_public_logn(LOGN) {
+        return Err(Error::InvalidParameter);
+    }
+
+    let f: Vec<i16> = secret
+        .inner
+        .f
+        .iter()
+        .map(|&value| i16::from(value))
+        .collect();
+    let g: Vec<i16> = secret
+        .inner
+        .g
+        .iter()
+        .map(|&value| i16::from(value))
+        .collect();
+    let h = compute_public(&f, &g, LOGN).ok_or(Error::Internal)?;
+    Ok(PublicKey {
+        bytes: public_key::encode(false, LOGN, &h).map_err(|_| Error::Internal)?,
+    })
+}
+
 fn poly_i8_from_i16(values: &[i16]) -> Result<Box<[i8]>> {
     let mut out = Vec::with_capacity(values.len());
     for &value in values {
@@ -830,6 +855,24 @@ fn solve_ntru_intermediate(
         out_f[u * slen..u * slen + slen].copy_from_slice(src_f);
         out_g[u * slen..u * slen + slen].copy_from_slice(src_g);
     }
+    if fg_len < slen {
+        for u in 0..n {
+            let sign_f = if (out_f[u * slen + fg_len - 1] >> 30) != 0 {
+                0x7FFF_FFFF
+            } else {
+                0
+            };
+            let sign_g = if (out_g[u * slen + fg_len - 1] >> 30) != 0 {
+                0x7FFF_FFFF
+            } else {
+                0
+            };
+            for v in fg_len..slen {
+                out_f[u * slen + v] = sign_f;
+                out_g[u * slen + v] = sign_g;
+            }
+        }
+    }
     Some((out_f, out_g))
 }
 
@@ -1230,7 +1273,6 @@ mod tests {
     }
 
     impl CryptoRng for FixedSeedRng {}
-
     fn negacyclic_mul(a: &[i16], b: &[i16]) -> Vec<i64> {
         let n = a.len();
         let mut out = vec![0i64; n];
