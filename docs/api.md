@@ -61,10 +61,13 @@ Metody już działające po Kroku 17:
 - `SecretKey::{sign_ref, sign_ref_with_external_nonce}`
 - `PublicKey::{to_bytes, from_bytes, verify_detached}`
 
+Metody działające po Kroku 18:
+
+- `PublicKey::prepare()`
+- `PreparedPublicKey::{verify_detached, verifier}`
+- `Verifier::{update, finalize}`
+
 Placeholderami pozostają jeszcze m.in.:
 
 - `SecretKey::derive_public()`
 - `ExpandedSecretKeyCt::*`
-- `PublicKey::prepare()`
-- `PreparedPublicKey::*`
-- `Verifier::finalize()`

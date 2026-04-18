@@ -7,6 +7,7 @@ use crate::falcon::keygen;
 use crate::falcon::sign_ref;
 use crate::falcon::verify;
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
+use crate::rng::shake256::ShakeContext;
 use rand_core::{CryptoRng, RngCore};
 
 #[cfg(feature = "zeroize")]
@@ -71,15 +72,13 @@ pub struct Nonce(pub(crate) Box<[u8]>);
 /// Stateful streaming verifier.
 #[derive(Clone, Debug)]
 pub struct Verifier<const LOGN: u32> {
-    nonce: Nonce,
-    message_len: usize,
-    prepared_len: usize,
+    pub(crate) hash: ShakeContext,
+    pub(crate) h_ntt: Box<[u16]>,
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub(crate) struct PreparedPublicKeyInner<const LOGN: u32> {
-    pub(crate) bytes: Box<[u8]>,
+    pub(crate) h_ntt: Box<[u16]>,
 }
 
 pub(crate) struct SecretKeyInner<const LOGN: u32> {
@@ -216,8 +215,7 @@ impl<const LOGN: u32> PublicKey<LOGN> {
     }
 
     pub fn prepare(&self) -> Result<PreparedPublicKey<LOGN>> {
-        let _ = self;
-        Err(Error::Internal)
+        verify::prepare_public_key(self)
     }
 
     pub fn verify_detached(&self, msg: &[u8], sig: &DetachedSignature<LOGN>) -> Result<()> {
@@ -227,27 +225,21 @@ impl<const LOGN: u32> PublicKey<LOGN> {
 
 impl<const LOGN: u32> PreparedPublicKey<LOGN> {
     pub fn verify_detached(&self, msg: &[u8], sig: &DetachedSignature<LOGN>) -> Result<()> {
-        let _ = (self, msg, sig);
-        Err(Error::Internal)
+        verify::verify_prepared_detached(self, msg, sig)
     }
 
     pub fn verifier(&self, nonce: &Nonce) -> Verifier<LOGN> {
-        Verifier {
-            nonce: nonce.clone(),
-            message_len: 0,
-            prepared_len: self.inner.bytes.len(),
-        }
+        verify::start_verifier(self, nonce)
     }
 }
 
 impl<const LOGN: u32> Verifier<LOGN> {
     pub fn update(&mut self, chunk: &[u8]) {
-        self.message_len = self.message_len.saturating_add(chunk.len());
+        self.hash.inject(chunk);
     }
 
     pub fn finalize(self, sig_body: &[u8]) -> Result<()> {
-        let _ = (self.nonce, self.message_len, self.prepared_len, sig_body);
-        Err(Error::Internal)
+        verify::finalize_verifier(self, sig_body)
     }
 }
 

@@ -2,12 +2,15 @@
 
 use crate::encoding::{public_key, signature};
 use crate::error::{Error, Result};
-use crate::falcon::hash_to_point::{hash_message_to_point_binary, is_short_binary};
+use crate::falcon::hash_to_point::{hash_to_point_binary, is_short_binary};
 use crate::math::ntt::{
     mq_intt_binary, mq_ntt_binary, mq_poly_montymul_ntt, mq_poly_sub, mq_poly_tomonty, QB,
 };
 use crate::params::is_public_logn;
-use crate::types::{DetachedSignature, PublicKey};
+use crate::rng::shake256::ShakeContext;
+use crate::types::{
+    DetachedSignature, Nonce, PreparedPublicKey, PreparedPublicKeyInner, PublicKey, Verifier,
+};
 
 fn prepare_public_key_ntt(h: &[u16], logn: u32) -> Box<[u16]> {
     let mut prepared = h.to_vec();
@@ -47,6 +50,32 @@ fn verify_raw_binary(c0: &[u16], s2: &[i16], h_ntt: &[u16], logn: u32) -> bool {
     is_short_binary(&s1, s2, logn)
 }
 
+fn decode_signature_s2<const LOGN: u32>(sig_body: &[u8]) -> Result<Box<[i16]>> {
+    if !is_public_logn(LOGN) {
+        return Err(Error::InvalidParameter);
+    }
+
+    let sig_decoded = signature::decode(sig_body)?;
+    if sig_decoded.ternary || sig_decoded.logn != LOGN {
+        return Err(Error::InvalidEncoding);
+    }
+    Ok(sig_decoded.s2)
+}
+
+fn verify_prepared_hash<const LOGN: u32>(
+    h_ntt: &[u16],
+    hash: &mut ShakeContext,
+    sig_body: &[u8],
+) -> Result<()> {
+    let s2 = decode_signature_s2::<LOGN>(sig_body)?;
+    let c0 = hash_to_point_binary(hash, LOGN);
+    if verify_raw_binary(&c0, &s2, h_ntt, LOGN) {
+        Ok(())
+    } else {
+        Err(Error::InvalidSignature)
+    }
+}
+
 pub(crate) fn decode_public_key<const LOGN: u32>(bytes: &[u8]) -> Result<Box<[u16]>> {
     if !is_public_logn(LOGN) {
         return Err(Error::InvalidParameter);
@@ -65,8 +94,19 @@ pub(crate) fn public_key_from_bytes<const LOGN: u32>(bytes: &[u8]) -> Result<Pub
     })
 }
 
-pub(crate) fn verify_detached<const LOGN: u32>(
+pub(crate) fn prepare_public_key<const LOGN: u32>(
     public: &PublicKey<LOGN>,
+) -> Result<PreparedPublicKey<LOGN>> {
+    let h = decode_public_key::<LOGN>(&public.bytes)?;
+    Ok(PreparedPublicKey {
+        inner: PreparedPublicKeyInner {
+            h_ntt: prepare_public_key_ntt(&h, LOGN),
+        },
+    })
+}
+
+pub(crate) fn verify_prepared_detached<const LOGN: u32>(
+    prepared: &PreparedPublicKey<LOGN>,
     msg: &[u8],
     sig: &DetachedSignature<LOGN>,
 ) -> Result<()> {
@@ -74,20 +114,45 @@ pub(crate) fn verify_detached<const LOGN: u32>(
         return Err(Error::InvalidParameter);
     }
 
-    let h = decode_public_key::<LOGN>(&public.bytes)?;
-    let prepared = prepare_public_key_ntt(&h, LOGN);
+    let mut hash = ShakeContext::shake256();
+    hash.inject(sig.nonce.as_bytes());
+    hash.inject(msg);
+    hash.flip();
+    verify_prepared_hash::<LOGN>(&prepared.inner.h_ntt, &mut hash, &sig.body)
+}
 
-    let sig_decoded = signature::decode(&sig.body)?;
-    if sig_decoded.ternary || sig_decoded.logn != LOGN {
-        return Err(Error::InvalidEncoding);
+pub(crate) fn start_verifier<const LOGN: u32>(
+    prepared: &PreparedPublicKey<LOGN>,
+    nonce: &Nonce,
+) -> Verifier<LOGN> {
+    let mut hash = ShakeContext::shake256();
+    hash.inject(nonce.as_bytes());
+    Verifier {
+        hash,
+        h_ntt: prepared.inner.h_ntt.clone(),
+    }
+}
+
+pub(crate) fn finalize_verifier<const LOGN: u32>(
+    verifier: Verifier<LOGN>,
+    sig_body: &[u8],
+) -> Result<()> {
+    if !is_public_logn(LOGN) {
+        return Err(Error::InvalidParameter);
     }
 
-    let c0 = hash_message_to_point_binary(sig.nonce.as_bytes(), msg, LOGN);
-    if verify_raw_binary(&c0, &sig_decoded.s2, &prepared, LOGN) {
-        Ok(())
-    } else {
-        Err(Error::InvalidSignature)
-    }
+    let Verifier { mut hash, h_ntt } = verifier;
+    hash.flip();
+    verify_prepared_hash::<LOGN>(&h_ntt, &mut hash, sig_body)
+}
+
+pub(crate) fn verify_detached<const LOGN: u32>(
+    public: &PublicKey<LOGN>,
+    msg: &[u8],
+    sig: &DetachedSignature<LOGN>,
+) -> Result<()> {
+    let prepared = prepare_public_key(public)?;
+    verify_prepared_detached(&prepared, msg, sig)
 }
 
 #[cfg(test)]
@@ -163,5 +228,84 @@ mod tests {
         public
             .verify_detached(&STEP16_MSG, &sig)
             .expect("reference C signature must verify");
+    }
+
+    #[test]
+    fn prepared_public_key_accepts_reference_c_vector() {
+        let public = PublicKey::<9>::from_bytes(&STEP16_PK).expect("public key");
+        let prepared = public.prepare().expect("prepared public key");
+        let sig = DetachedSignature {
+            nonce: Nonce(STEP16_NONCE.to_vec().into_boxed_slice()),
+            body: STEP16_SIG.to_vec().into_boxed_slice(),
+        };
+
+        prepared
+            .verify_detached(&STEP16_MSG, &sig)
+            .expect("reference C signature must verify");
+    }
+
+    #[test]
+    fn streaming_verifier_accepts_reference_c_vector() {
+        let public = PublicKey::<9>::from_bytes(&STEP16_PK).expect("public key");
+        let prepared = public.prepare().expect("prepared public key");
+        let nonce = Nonce(STEP16_NONCE.to_vec().into_boxed_slice());
+        let mut verifier = prepared.verifier(&nonce);
+        let split = STEP16_MSG.len() / 2;
+        verifier.update(&STEP16_MSG[..split]);
+        verifier.update(&STEP16_MSG[split..]);
+
+        verifier
+            .finalize(&STEP16_SIG)
+            .expect("reference C signature must verify");
+    }
+
+    #[test]
+    fn prepared_verify_preserves_error_split() {
+        let keypair =
+            keygen_from_seed_material::<9>(b"falcon2017-step18-prepared-verify").expect("keygen");
+        let prepared = keypair.public.prepare().expect("prepared");
+        let sig = DetachedSignature {
+            nonce: Nonce(b"step18-nonce".to_vec().into_boxed_slice()),
+            body: signature::encode(false, Compression::None, 9, &vec![0i16; 1 << 9])
+                .expect("signature encoding"),
+        };
+
+        let err = prepared
+            .verify_detached(b"", &sig)
+            .expect_err("wrong signature");
+        assert_eq!(err, Error::InvalidSignature);
+
+        let bad_sig = DetachedSignature {
+            nonce: sig.nonce.clone(),
+            body: [0x10u8, 0x00, 0x00].to_vec().into_boxed_slice(),
+        };
+        let err = prepared
+            .verify_detached(b"", &bad_sig)
+            .expect_err("bad encoding");
+        assert_eq!(err, Error::InvalidEncoding);
+    }
+
+    #[test]
+    fn streaming_verifier_preserves_error_split() {
+        let keypair =
+            keygen_from_seed_material::<9>(b"falcon2017-step18-streaming-verify").expect("keygen");
+        let prepared = keypair.public.prepare().expect("prepared");
+        let nonce = Nonce(b"step18-streaming-nonce".to_vec().into_boxed_slice());
+        let mut verifier = prepared.verifier(&nonce);
+        verifier.update(b"hello");
+
+        let err = verifier
+            .clone()
+            .finalize(
+                &signature::encode(false, Compression::None, 9, &vec![0i16; 1 << 9])
+                    .expect("signature encoding"),
+            )
+            .expect_err("wrong signature");
+        assert_eq!(err, Error::InvalidSignature);
+
+        let err = verifier
+            .finalize(&[0x10u8, 0x00, 0x00])
+            .expect_err("bad encoding");
+        assert_eq!(err, Error::InvalidEncoding);
     }
 }
