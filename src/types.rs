@@ -8,7 +8,9 @@ use crate::falcon::keygen;
 use crate::falcon::sign_ct_strict as sign_ct_strict_backend;
 use crate::falcon::sign_ref;
 use crate::falcon::verify;
-use crate::falcon::workspace::{KeygenWorkspace, SignRefWorkspace, VerifyWorkspace};
+use crate::falcon::workspace::{
+    ExpandCtWorkspace, KeygenWorkspace, SignCtWorkspace, SignRefWorkspace, VerifyWorkspace,
+};
 use crate::math::fpr::soft::Fpr as SoftFpr;
 use crate::params::{FALCON1024_LOGN, FALCON512_LOGN};
 use crate::rng::shake256::ShakeContext;
@@ -228,6 +230,13 @@ impl<const LOGN: u32> SecretKey<LOGN> {
     pub fn expand_ct_strict(&self) -> Result<ExpandedSecretKeyCt<LOGN>> {
         expand_ct::expand_ct_strict(self)
     }
+
+    pub fn expand_ct_strict_in(
+        &self,
+        ws: &mut ExpandCtWorkspace<LOGN>,
+    ) -> Result<ExpandedSecretKeyCt<LOGN>> {
+        expand_ct::expand_ct_strict_in(self, ws)
+    }
 }
 
 fn poly_i8_from_i16(values: &[i16]) -> Result<Box<[i8]>> {
@@ -257,6 +266,29 @@ impl<const LOGN: u32> ExpandedSecretKeyCt<LOGN> {
         rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<DetachedSignature<LOGN>> {
         sign_ct_strict_backend::sign_ct_strict_with_external_nonce(self, msg, nonce, comp, rng)
+    }
+
+    pub fn sign_ct_strict_in(
+        &self,
+        msg: &[u8],
+        comp: Compression,
+        rng: &mut (impl RngCore + CryptoRng),
+        ws: &mut SignCtWorkspace<LOGN>,
+    ) -> Result<DetachedSignature<LOGN>> {
+        sign_ct_strict_backend::sign_ct_strict_in(self, msg, comp, rng, ws)
+    }
+
+    pub fn sign_ct_strict_with_external_nonce_in(
+        &self,
+        msg: &[u8],
+        nonce: Nonce,
+        comp: Compression,
+        rng: &mut (impl RngCore + CryptoRng),
+        ws: &mut SignCtWorkspace<LOGN>,
+    ) -> Result<DetachedSignature<LOGN>> {
+        sign_ct_strict_backend::sign_ct_strict_with_external_nonce_in(
+            self, msg, nonce, comp, rng, ws,
+        )
     }
 }
 

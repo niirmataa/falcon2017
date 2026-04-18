@@ -13,6 +13,25 @@ const fn expanded_ref_key_len(logn: u32) -> usize {
     4 * n + ffldl_treesize(logn)
 }
 
+/// Preallocated scratch space for advanced strict-CT key expansion.
+pub struct ExpandCtWorkspace<const LOGN: u32> {
+    pub(crate) prepared_bits: Vec<u64>,
+}
+
+impl<const LOGN: u32> ExpandCtWorkspace<LOGN> {
+    pub fn new() -> Self {
+        Self {
+            prepared_bits: vec![0; expanded_ref_key_len(LOGN)],
+        }
+    }
+}
+
+impl<const LOGN: u32> Default for ExpandCtWorkspace<LOGN> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Preallocated scratch space for advanced reference key generation.
 pub struct KeygenWorkspace<const LOGN: u32> {
     pub(crate) f: Vec<i16>,
@@ -79,6 +98,29 @@ impl<const LOGN: u32> Default for SignRefWorkspace<LOGN> {
     }
 }
 
+/// Preallocated scratch space for advanced strict-CT bridge signing.
+///
+/// Step 28 keeps a distinct public workspace type for the strict-CT API even
+/// though the current bridge signer still reuses the reference signing scratch
+/// layout internally.
+pub struct SignCtWorkspace<const LOGN: u32> {
+    pub(crate) inner: SignRefWorkspace<LOGN>,
+}
+
+impl<const LOGN: u32> SignCtWorkspace<LOGN> {
+    pub fn new() -> Self {
+        Self {
+            inner: SignRefWorkspace::new(),
+        }
+    }
+}
+
+impl<const LOGN: u32> Default for SignCtWorkspace<LOGN> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Preallocated scratch space for advanced reference verification.
 pub struct VerifyWorkspace<const LOGN: u32> {
     pub(crate) decoded_h: Vec<u16>,
@@ -140,5 +182,12 @@ impl<const LOGN: u32> Drop for SignRefWorkspace<LOGN> {
         zeroize_fpr(&mut self.sign_tmp);
         self.seed.zeroize();
         self.nonce.as_mut_slice().zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl<const LOGN: u32> Drop for ExpandCtWorkspace<LOGN> {
+    fn drop(&mut self) {
+        self.prepared_bits.as_mut_slice().zeroize();
     }
 }

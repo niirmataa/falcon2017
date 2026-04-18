@@ -14,8 +14,10 @@ Publicznie eksportowane typy:
 - `DetachedSignature<const LOGN: u32>`
 - `Nonce`
 - `Verifier<const LOGN: u32>`
+- `ExpandCtWorkspace<const LOGN: u32>`
 - `KeygenWorkspace<const LOGN: u32>`
 - `SignRefWorkspace<const LOGN: u32>`
+- `SignCtWorkspace<const LOGN: u32>`
 - `VerifyWorkspace<const LOGN: u32>`
 - `Compression::{None, Static}`
 - `Error::{InvalidEncoding, InvalidSignature, InvalidParameter, Randomness, Internal}`
@@ -28,8 +30,8 @@ Publiczne metody obecne na tym etapie:
 - `Falcon512::keygen_in()` i `Falcon1024::keygen_in()`
 - `Falcon512::keygen_from_seed()` i `Falcon1024::keygen_from_seed()` za feature `deterministic-tests`
 - `Falcon512::keygen_from_seed_in()` i `Falcon1024::keygen_from_seed_in()` za feature `deterministic-tests`
-- `SecretKey::{to_bytes, from_bytes, derive_public, sign_ref, sign_ref_in, sign_ref_with_external_nonce, sign_ref_with_external_nonce_in, expand_ct_strict}`
-- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}`
+- `SecretKey::{to_bytes, from_bytes, derive_public, sign_ref, sign_ref_in, sign_ref_with_external_nonce, sign_ref_with_external_nonce_in, expand_ct_strict, expand_ct_strict_in}`
+- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce, sign_ct_strict_in, sign_ct_strict_with_external_nonce_in}`
 - `PublicKey::{to_bytes, from_bytes, prepare, verify_detached, verify_detached_in}`
 - `PreparedPublicKey::{verify_detached, verify_detached_in, verifier}`
 - `Verifier::{update, finalize}`
@@ -48,6 +50,8 @@ Model workspace:
 - One-shot API nadal samo alokuje scratch.
 - Zaawansowane ścieżki `*_in(...)` przyjmują `&mut Workspace<LOGN>` i pozwalają reużywać bufory między wywołaniami.
 - Workspace są częścią publicznego API dopiero od Kroku 21 i nie zmieniają wire formatu ani semantyki podpisu.
+- Od Kroku 28 strict-CT path ma własne `ExpandCtWorkspace` i `SignCtWorkspace`, mimo że bridge
+  signer nadal używa referencyjnego układu scratcha pod spodem.
 
 Ważne ograniczenia publicznego surface:
 
@@ -109,7 +113,14 @@ Stan po Kroku 27:
   zamrozić wire-semantykę Falcon/Extra przed finalnym integer-only executorem
 - publiczny CT signer na tym etapie pozostaje one-shot; nie ma jeszcze osobnego workspace API
 
+Stan po Kroku 28:
+
+- `ExpandCtWorkspace<LOGN>` i `SignCtWorkspace<LOGN>` są częścią publicznego API
+- `SecretKey::expand_ct_strict_in()` pozwala reużywać scratch przy generowaniu expanded key
+- `ExpandedSecretKeyCt::{sign_ct_strict_in, sign_ct_strict_with_external_nonce_in}` pozwalają
+  reużywać scratch między wywołaniami bez zmiany semantyki podpisu
+- one-shot strict-CT signer pozostaje cienką nakładką na ścieżkę workspace-backed
+
 Otwarte pozostają jeszcze m.in.:
 
 - finalny integer-only executor dla `ExpandedSecretKeyCt::*`
-- ewentualne publiczne CT workspace API, jeśli będzie nadal potrzebne przed `C1`

@@ -10,7 +10,7 @@ use crate::encoding::signature;
 use crate::error::{Error, Result};
 use crate::falcon::hash_to_point::{hash_message_to_point_binary_into, is_short_binary};
 use crate::falcon::sign_ref::seed_prng_stream;
-use crate::falcon::workspace::SignRefWorkspace;
+use crate::falcon::workspace::{SignCtWorkspace, SignRefWorkspace};
 use crate::math::fft::{
     fft, ifft, poly_add, poly_merge_fft, poly_mul_fft, poly_mulconst, poly_split_fft, poly_sub,
 };
@@ -282,19 +282,8 @@ pub(crate) fn sign_ct_strict<const LOGN: u32>(
     comp: Compression,
     rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<DetachedSignature<LOGN>> {
-    let mut ws = SignRefWorkspace::<LOGN>::new();
-    let mut rng_stream = seed_prng_stream(rng)?;
-    ws.nonce.clear();
-    ws.nonce.resize(DEFAULT_NONCE_LEN, 0);
-    rng_stream.extract(ws.nonce.as_mut_slice());
-    sign_detached_with_rng_stream_in(
-        expanded,
-        msg,
-        Nonce(ws.nonce.clone().into_boxed_slice()),
-        comp,
-        &mut rng_stream,
-        &mut ws,
-    )
+    let mut ws = SignCtWorkspace::<LOGN>::new();
+    sign_ct_strict_in(expanded, msg, comp, rng, &mut ws)
 }
 
 pub(crate) fn sign_ct_strict_with_external_nonce<const LOGN: u32>(
@@ -304,9 +293,35 @@ pub(crate) fn sign_ct_strict_with_external_nonce<const LOGN: u32>(
     comp: Compression,
     rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<DetachedSignature<LOGN>> {
-    let mut ws = SignRefWorkspace::<LOGN>::new();
+    let mut ws = SignCtWorkspace::<LOGN>::new();
+    sign_ct_strict_with_external_nonce_in(expanded, msg, nonce, comp, rng, &mut ws)
+}
+
+pub(crate) fn sign_ct_strict_in<const LOGN: u32>(
+    expanded: &ExpandedSecretKeyCt<LOGN>,
+    msg: &[u8],
+    comp: Compression,
+    rng: &mut (impl RngCore + CryptoRng),
+    ws: &mut SignCtWorkspace<LOGN>,
+) -> Result<DetachedSignature<LOGN>> {
     let mut rng_stream = seed_prng_stream(rng)?;
-    sign_detached_with_rng_stream_in(expanded, msg, nonce, comp, &mut rng_stream, &mut ws)
+    ws.inner.nonce.clear();
+    ws.inner.nonce.resize(DEFAULT_NONCE_LEN, 0);
+    rng_stream.extract(ws.inner.nonce.as_mut_slice());
+    let nonce = Nonce(ws.inner.nonce.clone().into_boxed_slice());
+    sign_detached_with_rng_stream_in(expanded, msg, nonce, comp, &mut rng_stream, &mut ws.inner)
+}
+
+pub(crate) fn sign_ct_strict_with_external_nonce_in<const LOGN: u32>(
+    expanded: &ExpandedSecretKeyCt<LOGN>,
+    msg: &[u8],
+    nonce: Nonce,
+    comp: Compression,
+    rng: &mut (impl RngCore + CryptoRng),
+    ws: &mut SignCtWorkspace<LOGN>,
+) -> Result<DetachedSignature<LOGN>> {
+    let mut rng_stream = seed_prng_stream(rng)?;
+    sign_detached_with_rng_stream_in(expanded, msg, nonce, comp, &mut rng_stream, &mut ws.inner)
 }
 
 #[cfg(test)]

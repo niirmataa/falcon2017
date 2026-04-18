@@ -75,3 +75,25 @@ Weryfikacja Kroku 27:
   parzystość `sign_ct_strict` z `sign_ref` na stałych seedach,
 - `cargo test --features std,ref-f64,ct-strict,soft-fpr` oraz
   `cargo test --no-default-features --features ct-strict` przechodzą na zielono.
+
+## Krok 28
+
+Stan po Kroku 28:
+- `ExpandCtWorkspace<LOGN>` i `SignCtWorkspace<LOGN>` są publicznymi workspace dla strict-CT
+  bridge path,
+- `SecretKey::expand_ct_strict_in()` reużywa scratch przy przygotowaniu expanded key,
+- `ExpandedSecretKeyCt::{sign_ct_strict_in, sign_ct_strict_with_external_nonce_in}` reużywają
+  scratch między wywołaniami bez dodatkowego API-hackingu po stronie użytkownika,
+- one-shot strict-CT signer deleguje do ścieżki workspace-backed, więc semantyka podpisu pozostaje
+  jedna.
+
+Aktualny zakres Kroku 28:
+- to nadal bridge przed `C1`, a nie finalny integer-only strict signer,
+- runtime execution wciąż zależy od backendu `ref_f64`,
+- krok 28 domyka publiczny surface CT dla ścieżek `*_in(...)`, ale nie zamyka jeszcze audytu.
+
+Weryfikacja Kroku 28:
+- `tests/ct_consistency.rs` sprawdza zgodność `expand_ct_strict_in()` z one-shot oraz roundtrip dla
+  `sign_ct_strict_in()` i zgodność one-shot/workspace na tych samych seedach i nonce,
+- pełne `cargo test` oraz `cargo test --no-default-features --features ct-strict` przechodzą na
+  zielono.

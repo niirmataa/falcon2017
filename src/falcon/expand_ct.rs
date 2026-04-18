@@ -2,6 +2,7 @@
 
 use crate::error::{Error, Result};
 use crate::falcon::sign_ref::prepare_signing_key_bits_ref_into;
+use crate::falcon::workspace::ExpandCtWorkspace;
 use crate::math::fpr::soft::Fpr;
 use crate::params::is_public_logn;
 use crate::types::{ExpandedSecretKeyCt, ExpandedSecretKeyCtInner, SecretKey};
@@ -23,14 +24,17 @@ fn copy_bits_to_soft(dst: &mut [Fpr], bits: &[u64]) {
     }
 }
 
-fn expand_ct_inner<const LOGN: u32>(secret: &SecretKey<LOGN>) -> ExpandedSecretKeyCtInner<LOGN> {
+fn expand_ct_inner_with_bits<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    prepared_bits: &mut [u64],
+) -> ExpandedSecretKeyCtInner<LOGN> {
     let n = 1usize << LOGN;
     let tree_len = ffldl_treesize(LOGN);
     let expected_len = 4 * n + tree_len;
-    let mut prepared_bits = vec![0u64; expected_len].into_boxed_slice();
+    assert_eq!(prepared_bits.len(), expected_len);
     // Preserve the historical Falcon/Extra LDL/ffLDL semantics exactly, but
     // store the expanded key in the integer-backed `FprSoft` representation.
-    prepare_signing_key_bits_ref_into(secret, &mut prepared_bits);
+    prepare_signing_key_bits_ref_into(secret, prepared_bits);
 
     let (b00, rest) = prepared_bits.split_at(n);
     let (b01, rest) = rest.split_at(n);
@@ -52,20 +56,34 @@ fn expand_ct_inner<const LOGN: u32>(secret: &SecretKey<LOGN>) -> ExpandedSecretK
     copy_bits_to_soft(&mut expanded.tree, tree);
 
     #[cfg(feature = "zeroize")]
-    prepared_bits.as_mut().zeroize();
+    prepared_bits.zeroize();
 
     expanded
 }
 
+#[cfg(test)]
+fn expand_ct_inner<const LOGN: u32>(secret: &SecretKey<LOGN>) -> ExpandedSecretKeyCtInner<LOGN> {
+    let mut prepared_bits = vec![0u64; 4 * (1usize << LOGN) + ffldl_treesize(LOGN)];
+    expand_ct_inner_with_bits(secret, &mut prepared_bits)
+}
+
 pub(crate) fn expand_ct_strict<const LOGN: u32>(
     secret: &SecretKey<LOGN>,
+) -> Result<ExpandedSecretKeyCt<LOGN>> {
+    let mut ws = ExpandCtWorkspace::<LOGN>::new();
+    expand_ct_strict_in(secret, &mut ws)
+}
+
+pub(crate) fn expand_ct_strict_in<const LOGN: u32>(
+    secret: &SecretKey<LOGN>,
+    ws: &mut ExpandCtWorkspace<LOGN>,
 ) -> Result<ExpandedSecretKeyCt<LOGN>> {
     if !is_public_logn(LOGN) {
         return Err(Error::InvalidParameter);
     }
 
     Ok(ExpandedSecretKeyCt {
-        inner: expand_ct_inner(secret),
+        inner: expand_ct_inner_with_bits(secret, &mut ws.prepared_bits),
     })
 }
 
