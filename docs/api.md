@@ -63,6 +63,7 @@ Wymuszone już teraz zasady dla typów sekretów:
 - `SecretKey` i `ExpandedSecretKeyCt` nie mają `Clone`
 - pola wewnętrzne sekretów są niepubliczne
 - secret-bearing storage jest czyszczone przez `Drop + zeroize`
+- runtime state dla podpisu i keygen (`ShakeContext`, `Prng`, lokalne seedy, workspace secret scratch) też jest czyszczony przy `zeroize`
 
 Metody już działające po Kroku 17:
 
@@ -86,6 +87,12 @@ Metody działające po Kroku 21:
 - `PublicKey::verify_detached_in()`
 - `PreparedPublicKey::verify_detached_in()`
 - `KeygenWorkspace`, `SignRefWorkspace`, `VerifyWorkspace`
+
+Stan po Kroku 22:
+
+- `SecretKey` i `ExpandedSecretKeyCt` pozostają bez `Debug` i bez `Clone`
+- secret-bearing storage nie ma publicznych pól
+- `Drop + zeroize` obejmuje secret key storage, expanded key storage, reference workspaces oraz runtime state używany przez signer/keygen
 
 Placeholderami pozostają jeszcze m.in.:
 

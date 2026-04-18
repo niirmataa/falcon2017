@@ -1,6 +1,8 @@
 //! Portable PRNG ported from the Falcon 2017 baseline.
 
 use crate::rng::shake256::ShakeContext;
+#[cfg(feature = "zeroize")]
+use zeroize::Zeroize;
 
 pub const PRNG_CHACHA20: i32 = 1;
 pub const PRNG_CHACHA20_SSE2: i32 = 2;
@@ -82,6 +84,16 @@ impl Prng {
             self.refill();
         }
         v
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl Drop for Prng {
+    fn drop(&mut self) {
+        self.buf.zeroize();
+        self.ptr.zeroize();
+        self.state.zeroize();
+        self.prng_type.zeroize();
     }
 }
 

@@ -26,6 +26,8 @@ use crate::params::is_public_logn;
 use crate::rng::shake256::ShakeContext;
 use crate::types::{Keypair, PublicKey, SecretKey, SecretKeyInner};
 use rand_core::{CryptoRng, RngCore};
+#[cfg(feature = "zeroize")]
+use zeroize::Zeroize;
 
 pub(crate) const MAX_BL_SMALL2: [usize; 11] = [1, 1, 2, 2, 4, 7, 14, 27, 53, 106, 212];
 pub(crate) const MAX_BL_LARGE2: [usize; 10] = [2, 2, 5, 7, 12, 22, 42, 80, 157, 310];
@@ -331,7 +333,10 @@ pub(crate) fn keygen_with_rng<const LOGN: u32>(
     let mut seed = [0u8; 32];
     rng.try_fill_bytes(&mut seed)
         .map_err(|_| Error::Randomness)?;
-    keygen_from_seed_material::<LOGN>(&seed)
+    let result = keygen_from_seed_material::<LOGN>(&seed);
+    #[cfg(feature = "zeroize")]
+    seed.zeroize();
+    result
 }
 
 pub(crate) fn keygen_from_seed_material<const LOGN: u32>(seed: &[u8]) -> Result<Keypair<LOGN>> {
@@ -346,7 +351,10 @@ pub(crate) fn keygen_with_rng_in<const LOGN: u32>(
     let mut seed = [0u8; 32];
     rng.try_fill_bytes(&mut seed)
         .map_err(|_| Error::Randomness)?;
-    keygen_from_seed_material_in::<LOGN>(&seed, ws)
+    let result = keygen_from_seed_material_in::<LOGN>(&seed, ws);
+    #[cfg(feature = "zeroize")]
+    seed.zeroize();
+    result
 }
 
 pub(crate) fn keygen_from_seed_material_in<const LOGN: u32>(

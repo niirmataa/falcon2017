@@ -19,6 +19,8 @@ use crate::rng::shake256::ShakeContext;
 use crate::sampler::sign_ref::sample_binary;
 use crate::types::{DetachedSignature, Nonce, SecretKey};
 use rand_core::{CryptoRng, RngCore};
+#[cfg(feature = "zeroize")]
+use zeroize::Zeroize;
 
 struct ExpandedRefKey<'a> {
     logn: u32,
@@ -374,6 +376,8 @@ fn seed_prng_stream(rng: &mut (impl RngCore + CryptoRng)) -> Result<ShakeContext
 
     let mut sc = ShakeContext::shake256();
     sc.inject(&seed);
+    #[cfg(feature = "zeroize")]
+    seed.zeroize();
     sc.flip();
     Ok(sc)
 }

@@ -1,5 +1,8 @@
 //! SHAKE state and sponge operations ported from `shake.h` / `shake.c`.
 
+#[cfg(feature = "zeroize")]
+use zeroize::Zeroize;
+
 pub const SHAKE128_CAPACITY: usize = 256;
 pub const SHAKE256_CAPACITY: usize = 512;
 
@@ -152,6 +155,16 @@ impl ShakeContext {
         context.inject(input);
         context.flip();
         context.extract(out);
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl Drop for ShakeContext {
+    fn drop(&mut self) {
+        self.dbuf.zeroize();
+        self.dptr.zeroize();
+        self.rate.zeroize();
+        self.a.zeroize();
     }
 }
 
