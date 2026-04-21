@@ -166,7 +166,17 @@ pub fn decode_into(
                 }
 
                 lo += ne << j;
-                let value = if sign != 0 { -(lo as i16) } else { lo as i16 };
+                let value = if sign != 0 {
+                    if lo > 0x8000 {
+                        return Err(Error::InvalidEncoding);
+                    }
+                    -(lo as i32) as i16
+                } else {
+                    if lo > i16::MAX as u32 {
+                        return Err(Error::InvalidEncoding);
+                    }
+                    lo as i16
+                };
                 out[filled] = value;
                 filled += 1;
             }

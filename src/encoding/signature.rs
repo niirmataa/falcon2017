@@ -72,3 +72,20 @@ fn validate_logn(ternary: bool, logn: u32) -> Result<()> {
         Err(Error::InvalidEncoding)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_rejects_smallvec_neg_overflow_artifact() {
+        let bytes = [
+            0xa2, 0xef, 0xc7, 0x23, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
+            0x00, 0x00, 0x01,
+        ];
+
+        let err = decode(&bytes).expect_err("must reject minimized fuzz artifact");
+        assert_eq!(err, Error::InvalidEncoding);
+    }
+}
