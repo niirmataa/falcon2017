@@ -12,7 +12,9 @@ default = ["std"]
 std = []
 
 [dependencies]
+falcon2017 = { path = ".." }
 libfuzzer-sys = "0.4"
+rand_core = "0.6"
 
 [[bin]]
 name = "decode_signature"
@@ -29,5 +31,11 @@ doc = false
 [[bin]]
 name = "decode_secret_key"
 path = "fuzz_targets/decode_secret_key.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "verify"
+path = "fuzz_targets/verify.rs"
 test = false
 doc = false
