@@ -22,7 +22,6 @@ Reasons gate `C1` remains open:
 
 - signing still retries until `is_short_binary(...)` accepts
 - the strict sampler still uses acceptance / retry logic
-- soft FFT still requires source-level branch and memory-access review
 - the strict sampler and strict signing control flow still require source-level review
 - the current dynamic timing dataset is still an initial dudect-like checkpoint, not a completed large-sample dossier
 - the intended long-run fuzz campaigns are not yet running on the target GNU/ASan host

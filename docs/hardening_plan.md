@@ -52,7 +52,7 @@ The goal is simple:
 - [x] add dudect-like timing harnesses for `expand_ct_strict` and `sign_ct_strict`
 - [ ] capture timing datasets and review notes in repo-tracked artifacts
 - [x] perform source-level branch and memory-access review for soft FPR
-- [ ] perform source-level branch and memory-access review for soft FFT
+- [x] perform source-level branch and memory-access review for soft FFT
 - [ ] perform source-level branch and memory-access review for the strict sampler
 - [ ] perform source-level branch and memory-access review for strict signing control flow
 - [ ] run `cargo audit` and record the clean or triaged result
@@ -65,7 +65,7 @@ Work should proceed in this order:
 
 1. GNU/Linux decoder and verification fuzzing
 2. larger-sample dudect-like timing campaigns and review notes
-3. source review of `soft_fft`, the strict sampler, and strict signing control flow
+3. source review of the strict sampler and strict signing control flow
 4. dependency-audit triage and residual-risk statement for `C1`
 
 This order matters. Fuzzing and timing evidence should not be postponed behind architecture cleanup or Hawk work.
@@ -76,10 +76,9 @@ The next commits should be small, reviewable, and sequenced.
 
 1. `fuzz: record GNU/Linux decoder and verification campaigns`
 2. `timing: scale strict-path dudect-like evidence`
-3. `audit: record soft-fft branch and memory-access review`
-4. `audit: record strict sampler and signing control-flow review`
-5. `audit: record cargo-audit status and dependency triage`
-6. `docs: close C1 audit-candidate dossier`
+3. `audit: record strict sampler and signing control-flow review`
+4. `audit: record cargo-audit status and dependency triage`
+5. `docs: close C1 audit-candidate dossier`
 
 If any commit grows beyond one concrete proof point, split it again.
 

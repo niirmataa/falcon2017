@@ -37,6 +37,7 @@ Coverage already implemented for the `ct_strict` track:
 - `src/sampler/sign_ct_strict.rs` also contains distribution and timing smoke tests for the strict sampler path
 - `src/bin/ct_timing.rs`: dudect-like timing harness that records fixed-vs-varied timing datasets for `expand_ct_strict()` and `sign_ct_strict()` into repo-tracked artifacts
 - `artifacts/ct-source-review-soft-fpr.md`: source-review note recording the current branch and memory-access assessment for `src/math/fpr/soft.rs`
+- `artifacts/ct-source-review-soft-fft.md`: source-review note recording the current branch and memory-access assessment for `src/math/fft_soft.rs`
 
 Coverage intentionally deferred to later strict steps:
 
