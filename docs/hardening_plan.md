@@ -37,12 +37,12 @@ The goal is simple:
 
 - [x] current `ct_strict` engineering status is documented in `docs/ct-strict.md`
 - [x] threat-model requirements are documented in `docs/ct_threat_model.md`
-- [ ] enumerate all operand-dependent branches and retries in soft FPR, soft FFT, sampler, and signing
-- [ ] separate "engineering evidence" from "security claim" in any remaining docs or release text
-- [ ] record which properties are claimed today for `expand_ct_strict` and `sign_ct_strict`
-- [ ] record which properties are explicitly not claimed today
-- [ ] add a short release-facing note describing the exact public wording allowed before `C1`
-- [ ] mark `C0` closed only when no public document overstates the strict-path claim
+- [x] enumerate all operand-dependent branches and retries in soft FPR, soft FFT, sampler, and signing
+- [x] separate "engineering evidence" from "security claim" in any remaining docs or release text
+- [x] record which properties are claimed today for `expand_ct_strict` and `sign_ct_strict`
+- [x] record which properties are explicitly not claimed today
+- [x] add a short release-facing note describing the exact public wording allowed before `C1`
+- [x] mark `C0` closed only when no public document overstates the strict-path claim
 
 ### `C1`: Strict-Path Audit-Candidate Dossier
 
@@ -66,7 +66,7 @@ Work should proceed in this order:
 1. GNU/Linux decoder and verification fuzzing
 2. larger-sample dudect-like timing campaigns and review notes
 3. source review dossier for strict-path internals
-4. final claim-language cleanup for `C0` and `C1`
+4. dependency-audit triage and residual-risk statement for `C1`
 
 This order matters. Fuzzing and timing evidence should not be postponed behind architecture cleanup or Hawk work.
 
@@ -74,22 +74,19 @@ This order matters. Fuzzing and timing evidence should not be postponed behind a
 
 The next commits should be small, reviewable, and sequenced.
 
-1. `audit: add hardening plan and gate tracker`
-2. `differential: define reproducible R1 artifact set`
-3. `differential: add Rust-C artifact generator and checker`
-4. `fuzz: add verify_detached libFuzzer harness`
-5. `fuzz: add GNU/Linux corpus and crash-artifact workflow`
-6. `timing: scale strict-path dudect-like evidence`
-7. `audit: record soft-fpr branch and memory-access review`
-8. `audit: record soft-fft branch and memory-access review`
-9. `audit: record strict sampler and signing control-flow review`
-10. `audit: record cargo-audit status and dependency triage`
-11. `docs: close C0 claim wording`
-12. `docs: close C1 audit-candidate dossier`
+1. `fuzz: record GNU/Linux decoder and verification campaigns`
+2. `timing: scale strict-path dudect-like evidence`
+3. `audit: record soft-fpr branch and memory-access review`
+4. `audit: record soft-fft branch and memory-access review`
+5. `audit: record strict sampler and signing control-flow review`
+6. `audit: record cargo-audit status and dependency triage`
+7. `docs: close C1 audit-candidate dossier`
 
 If any commit grows beyond one concrete proof point, split it again.
 
 ## Recent Hardening Commits
+
+`C0` is now treated as closed by the documentation set in `SECURITY.md`, `README.md`, `docs/c0_claim_boundary.md`, `docs/ct-strict.md`, and `docs/api.md`.
 
 These are the recent commits that already moved the repo in the right direction:
 

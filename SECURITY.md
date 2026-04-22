@@ -38,9 +38,9 @@ The repository must not currently claim:
 
 The repository is organized around three evidence gates:
 
-- `R1`: reference-equivalence closure for the `ref` backend
-- `C0`: exact public wording for the `ct_strict` claim boundary
-- `C1`: strict-path audit-candidate dossier
+- `R1`: closed reference-equivalence checkpoint for the `ref` backend
+- `C0`: closed exact public wording for the `ct_strict` claim boundary
+- `C1`: open strict-path audit-candidate dossier
 
 These gates are elaborated in:
 
@@ -48,6 +48,7 @@ These gates are elaborated in:
 - `docs/ref_security_claim.md`
 - `docs/ct_threat_model.md`
 - `docs/ct_equivalence.md`
+- `docs/c0_claim_boundary.md`
 - `docs/hardening_plan.md`
 
 ## Reference-path interpretation
@@ -77,7 +78,7 @@ That claim is not complete until:
 - fuzz evidence is recorded on a suitable GNU/Linux sanitizer-capable host
 - source-level review of strict-path internals is completed
 
-Until then, `ct_strict` should be described as:
+Until `C1` closes, `ct_strict` should be described as:
 
 - a strict-path engineering track
 - a candidate constant-time backend

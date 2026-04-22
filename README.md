@@ -13,9 +13,9 @@ The project is being built as a single crate first. Hawk and any shared Falcon/H
 
 ## Status
 
-Current checkpoint: `v0.1-step30`
+Current checkpoint: `R1 closed`, `C0 closed`, `C1 open`.
 
-Strict-path wording follows `SECURITY.md`: `ct_strict` is currently a candidate constant-time backend under active audit hardening, not yet a completed defensively constant-time implementation.
+Strict-path wording follows `SECURITY.md` and `docs/c0_claim_boundary.md`: `ct_strict` is currently a candidate constant-time backend under active audit hardening, not yet a completed defensively constant-time implementation.
 
 Implemented today:
 
@@ -40,9 +40,9 @@ Implemented today:
 
 Not implemented yet:
 
-- reproducible `R1` reference-equivalence artifact set and closure dossier
+- completed `C1` strict-path audit dossier
 - long-run GNU/ASan fuzz campaigns, including verification-focused fuzzing
-- dudect-like timing evidence, retry histograms, and the remaining strict-path audit dossier
+- larger-sample dudect-like timing evidence, retry histograms, and review notes
 - source-level branch and memory-access review for soft FPR, soft FFT, sampler, and signing control flow
 - Hawk integration
 

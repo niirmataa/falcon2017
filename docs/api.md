@@ -55,7 +55,7 @@ Current caveats:
 
 - `Nonce` remains a separate public type and currently accepts arbitrary byte lengths. This preserves historical interop and deterministic test coverage, but it is broader than the eventual safe/hazmat split the repository intends to adopt.
 - `*_in(...)` reduces scratch reallocation, but returned keys and signatures are still heap-backed values.
-- `ct_strict` is a runtime integer-only signing path, not yet a completed defensive constant-time claim. The claim boundary is defined in `SECURITY.md` and `docs/ct_threat_model.md`.
+- `ct_strict` is a runtime integer-only signing path, not yet a completed defensive constant-time claim. The current allowed wording is fixed in `SECURITY.md` and `docs/c0_claim_boundary.md`, while the stronger `C1` requirements stay in `docs/ct_threat_model.md`.
 - `hazmat` is not exposed yet; it is planned as a future feature gate rather than part of the current public API.
 
 Important public-surface constraints:

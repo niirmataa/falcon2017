@@ -44,7 +44,7 @@ The next concrete priorities are:
 The repo should be driven by three gates:
 
 - `R1`: close the reference-equivalence gate
-- `C0`: define the exact `ct_strict` claim boundary
+- `C0`: closed exact `ct_strict` claim boundary
 - `C1`: build a real strict-path audit-candidate dossier
 
 Only after those gates should the repository revisit broader API generalization, aggressive `no_std` refactoring, or any shared Falcon/Hawk core.

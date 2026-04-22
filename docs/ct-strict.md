@@ -1,6 +1,6 @@
 # CT Strict
 
-This document tracks the engineering milestones and current claim boundary for the `ct_strict` backend.
+This document tracks the engineering milestones for the `ct_strict` backend. The exact public claim boundary is now fixed in `SECURITY.md` and `docs/c0_claim_boundary.md`.
 
 ## Current Boundary
 
@@ -26,7 +26,7 @@ Reasons gate `C1` remains open:
 - the current dynamic timing dataset is still an initial dudect-like checkpoint, not a completed large-sample dossier
 - the intended long-run fuzz campaigns are not yet running on the target GNU/ASan host
 
-The stronger claim boundary is defined in `SECURITY.md` and `docs/ct_threat_model.md`.
+The exact `C0` claim boundary is fixed in `SECURITY.md` and `docs/c0_claim_boundary.md`; the stronger `C1` requirements remain in `docs/ct_threat_model.md`.
 
 ## Milestone Log
 
