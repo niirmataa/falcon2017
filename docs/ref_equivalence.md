@@ -48,8 +48,8 @@ Any mismatch is a failure of equivalence.
 
 Current repository status:
 
-- deterministic differential campaigns exist
-- scale is below the final `10_000` target
+- a reproducible `10_000`-seed keygen differential artifact campaign exists
+- the GNU/Linux host reproduces that campaign cleanly with zero mismatches
 
 ### 2. Signing differential campaign
 
@@ -64,8 +64,8 @@ draw order.
 
 Current repository status:
 
-- differential signing support exists
-- the final campaign size and reporting still need to be formalized
+- a reproducible `1_000`-case signing differential artifact campaign exists
+- the GNU/Linux host reproduces that campaign cleanly with zero nonce/signature mismatches and zero cross-verification failures
 
 ### 3. NTRU solver equivalence
 
@@ -114,13 +114,13 @@ This evidence is not complete until the statistical report exists.
 The current in-repo artifact generator is:
 
 ```bash
-cargo run --features deterministic-tests --bin r1_artifacts -- all --out-dir artifacts --cases 512
+cargo run --features deterministic-tests --bin r1_artifacts -- all --out-dir artifacts --keygen-cases 10000 --sign-cases 1000
 ```
 
 The matching validation command is:
 
 ```bash
-cargo run --features deterministic-tests --bin r1_artifacts -- check-all --out-dir artifacts --cases 512
+cargo run --features deterministic-tests --bin r1_artifacts -- check-all --out-dir artifacts --keygen-cases 10000 --sign-cases 1000
 ```
 
 The current deterministic artifact set is:
@@ -136,12 +136,13 @@ The pinned deterministic campaigns use:
 - signing RNG seeds: `step-r1-sign-seed-512`, `step-r1-sign-seed-1024`
 - signing messages: `step-r1-sign-msg-512`, `step-r1-sign-msg-1024`
 - alternating `Compression::{None, Static}` per case
-- current scale: `512` cases per public `logn`
+- current keygen scale: `10_000` cases per public `logn`
+- current signing scale: `1_000` cases per public `logn`
 
 `ref-differential-keygen.json` records, per case:
 
 - the deterministic seed
-- expected encoded public key and secret key from the frozen C baseline
+- expected encoded public-key and secret-key lengths plus SHA-256 digests from the frozen C baseline
 - pass/fail booleans for Rust keygen, `derive_public()`, and decode/re-encode checks
 - Rust-side raw values only if a mismatch occurs
 
@@ -154,7 +155,11 @@ The pinned deterministic campaigns use:
 
 `ref-differential-summary.md` is the deterministic pass/fail digest for the current artifact set.
 
-This artifact set is the repository's current reproducible `R1` checkpoint. The final `10_000`-seed keygen target and the larger equivalence dossier remain open.
+This artifact set is the repository's current reproducible `R1` checkpoint for deterministic keygen/signing differential evidence.
+
+Known remaining gap outside this deterministic `R1` checkpoint:
+
+- sampler statistical evidence is still tracked separately in the broader reference-equivalence dossier
 
 ## Required artifacts
 

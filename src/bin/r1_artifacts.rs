@@ -7,6 +7,8 @@ use common::{c_reference, differential_bytes, FixedSeedRng};
 
 #[cfg(feature = "deterministic-tests")]
 use falcon2017::{Compression, Falcon1024, Falcon512, Nonce, PublicKey, SecretKey};
+#[cfg(feature = "deterministic-tests")]
+use sha2::{Digest, Sha256};
 
 #[cfg(feature = "deterministic-tests")]
 use std::fmt::Write as _;
@@ -16,7 +18,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "deterministic-tests")]
-const DEFAULT_CASES_PER_LOGN: u32 = 512;
+const DEFAULT_KEYGEN_CASES_PER_LOGN: u32 = 10_000;
+#[cfg(feature = "deterministic-tests")]
+const DEFAULT_SIGN_CASES_PER_LOGN: u32 = 1_000;
 #[cfg(feature = "deterministic-tests")]
 const KEYGEN_ARTIFACT_FILENAME: &str = "ref-differential-keygen.json";
 #[cfg(feature = "deterministic-tests")]
@@ -60,7 +64,8 @@ struct Options {
     kind: ArtifactKind,
     out: Option<PathBuf>,
     out_dir: PathBuf,
-    cases_per_logn: u32,
+    keygen_cases_per_logn: u32,
+    sign_cases_per_logn: u32,
 }
 
 #[cfg(feature = "deterministic-tests")]
@@ -100,9 +105,14 @@ fn run() -> Result<(), String> {
 
 #[cfg(feature = "deterministic-tests")]
 fn run_all(options: &Options) -> Result<(), String> {
-    let (keygen_text, keygen_stats) = build_keygen_artifact(options.cases_per_logn)?;
-    let (sign_text, sign_stats) = build_sign_artifact(options.cases_per_logn)?;
-    let summary_text = build_summary_artifact(options.cases_per_logn, keygen_stats, sign_stats);
+    let (keygen_text, keygen_stats) = build_keygen_artifact(options.keygen_cases_per_logn)?;
+    let (sign_text, sign_stats) = build_sign_artifact(options.sign_cases_per_logn)?;
+    let summary_text = build_summary_artifact(
+        options.keygen_cases_per_logn,
+        options.sign_cases_per_logn,
+        keygen_stats,
+        sign_stats,
+    );
 
     write_or_check(
         &options.out_dir.join(KEYGEN_ARTIFACT_FILENAME),
@@ -130,19 +140,24 @@ fn run_one(options: &Options) -> Result<(), String> {
     let path = resolve_output_path(options)?;
     match options.kind {
         ArtifactKind::Keygen => {
-            let (text, stats) = build_keygen_artifact(options.cases_per_logn)?;
+            let (text, stats) = build_keygen_artifact(options.keygen_cases_per_logn)?;
             write_or_check(&path, &text, options.mode)?;
             ensure_keygen_clean(stats)?;
         }
         ArtifactKind::Sign => {
-            let (text, stats) = build_sign_artifact(options.cases_per_logn)?;
+            let (text, stats) = build_sign_artifact(options.sign_cases_per_logn)?;
             write_or_check(&path, &text, options.mode)?;
             ensure_sign_clean(stats)?;
         }
         ArtifactKind::Summary => {
-            let (_, keygen_stats) = build_keygen_artifact(options.cases_per_logn)?;
-            let (_, sign_stats) = build_sign_artifact(options.cases_per_logn)?;
-            let text = build_summary_artifact(options.cases_per_logn, keygen_stats, sign_stats);
+            let (_, keygen_stats) = build_keygen_artifact(options.keygen_cases_per_logn)?;
+            let (_, sign_stats) = build_sign_artifact(options.sign_cases_per_logn)?;
+            let text = build_summary_artifact(
+                options.keygen_cases_per_logn,
+                options.sign_cases_per_logn,
+                keygen_stats,
+                sign_stats,
+            );
             write_or_check(&path, &text, options.mode)?;
             ensure_keygen_clean(keygen_stats)?;
             ensure_sign_clean(sign_stats)?;
@@ -170,7 +185,8 @@ fn parse_options() -> Result<Options, String> {
 
     let mut out = None;
     let mut out_dir = PathBuf::from("artifacts");
-    let mut cases_per_logn = DEFAULT_CASES_PER_LOGN;
+    let mut keygen_cases_per_logn = DEFAULT_KEYGEN_CASES_PER_LOGN;
+    let mut sign_cases_per_logn = DEFAULT_SIGN_CASES_PER_LOGN;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -184,11 +200,31 @@ fn parse_options() -> Result<Options, String> {
             }
             "--cases" => {
                 let value = args.next().ok_or_else(usage)?;
-                cases_per_logn = value
+                let parsed = value
                     .parse::<u32>()
                     .map_err(|_| format!("invalid --cases value: {value}"))?;
-                if cases_per_logn == 0 {
+                if parsed == 0 {
                     return Err("--cases must be greater than zero".into());
+                }
+                keygen_cases_per_logn = parsed;
+                sign_cases_per_logn = parsed;
+            }
+            "--keygen-cases" => {
+                let value = args.next().ok_or_else(usage)?;
+                keygen_cases_per_logn = value
+                    .parse::<u32>()
+                    .map_err(|_| format!("invalid --keygen-cases value: {value}"))?;
+                if keygen_cases_per_logn == 0 {
+                    return Err("--keygen-cases must be greater than zero".into());
+                }
+            }
+            "--sign-cases" => {
+                let value = args.next().ok_or_else(usage)?;
+                sign_cases_per_logn = value
+                    .parse::<u32>()
+                    .map_err(|_| format!("invalid --sign-cases value: {value}"))?;
+                if sign_cases_per_logn == 0 {
+                    return Err("--sign-cases must be greater than zero".into());
                 }
             }
             _ => return Err(usage()),
@@ -204,7 +240,8 @@ fn parse_options() -> Result<Options, String> {
         kind,
         out,
         out_dir,
-        cases_per_logn,
+        keygen_cases_per_logn,
+        sign_cases_per_logn,
     })
 }
 
@@ -212,10 +249,11 @@ fn parse_options() -> Result<Options, String> {
 fn usage() -> String {
     [
         "usage:",
-        "  cargo run --features deterministic-tests --bin r1_artifacts -- all --out-dir artifacts --cases 512",
-        "  cargo run --features deterministic-tests --bin r1_artifacts -- check-all --out-dir artifacts --cases 512",
-        "  cargo run --features deterministic-tests --bin r1_artifacts -- keygen --out artifacts/ref-differential-keygen.json --cases 512",
-        "  cargo run --features deterministic-tests --bin r1_artifacts -- sign --out artifacts/ref-differential-sign.json --cases 512",
+        "  cargo run --features deterministic-tests --bin r1_artifacts -- all --out-dir artifacts --keygen-cases 10000 --sign-cases 1000",
+        "  cargo run --features deterministic-tests --bin r1_artifacts -- check-all --out-dir artifacts --keygen-cases 10000 --sign-cases 1000",
+        "  cargo run --features deterministic-tests --bin r1_artifacts -- keygen --out artifacts/ref-differential-keygen.json --keygen-cases 10000",
+        "  cargo run --features deterministic-tests --bin r1_artifacts -- sign --out artifacts/ref-differential-sign.json --sign-cases 1000",
+        "  cargo run --features deterministic-tests --bin r1_artifacts -- summary --out artifacts/ref-differential-summary.md --keygen-cases 10000 --sign-cases 1000",
     ]
     .join("\n")
 }
@@ -523,14 +561,26 @@ fn write_keygen_entry(
     writeln!(out, "      \"seed_hex\": \"{}\",", to_hex(seed)).unwrap();
     writeln!(
         out,
-        "      \"expected_public_key_hex\": \"{}\",",
-        to_hex(c_pk)
+        "      \"expected_public_key_len\": {},",
+        c_pk.len()
     )
     .unwrap();
     writeln!(
         out,
-        "      \"expected_secret_key_hex\": \"{}\",",
-        to_hex(c_sk)
+        "      \"expected_public_key_sha256\": \"{}\",",
+        sha256_hex(c_pk)
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "      \"expected_secret_key_len\": {},",
+        c_sk.len()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "      \"expected_secret_key_sha256\": \"{}\",",
+        sha256_hex(c_sk)
     )
     .unwrap();
     write_optional_hex_entry(out, "rust_public_key_hex", rust_pk);
@@ -789,20 +839,26 @@ fn write_sign_case<const LOGN: u32, Marker>(
 }
 
 #[cfg(feature = "deterministic-tests")]
-fn build_summary_artifact(cases_per_logn: u32, keygen: KeygenStats, sign: SignStats) -> String {
+fn build_summary_artifact(
+    keygen_cases_per_logn: u32,
+    sign_cases_per_logn: u32,
+    keygen: KeygenStats,
+    sign: SignStats,
+) -> String {
     let mut out = String::new();
     writeln!(&mut out, "# R1 Differential Summary").unwrap();
     writeln!(&mut out).unwrap();
-    writeln!(&mut out, "- cases per logn: {cases_per_logn}").unwrap();
+    writeln!(&mut out, "- keygen cases per logn: {keygen_cases_per_logn}").unwrap();
+    writeln!(&mut out, "- sign cases per logn: {sign_cases_per_logn}").unwrap();
     writeln!(&mut out, "- supported logn values: `9`, `10`").unwrap();
     writeln!(
         &mut out,
-        "- generator command: `cargo run --features deterministic-tests --bin r1_artifacts -- all --out-dir artifacts --cases {cases_per_logn}`"
+        "- generator command: `cargo run --features deterministic-tests --bin r1_artifacts -- all --out-dir artifacts --keygen-cases {keygen_cases_per_logn} --sign-cases {sign_cases_per_logn}`"
     )
     .unwrap();
     writeln!(
         &mut out,
-        "- validation command: `cargo run --features deterministic-tests --bin r1_artifacts -- check-all --out-dir artifacts --cases {cases_per_logn}`"
+        "- validation command: `cargo run --features deterministic-tests --bin r1_artifacts -- check-all --out-dir artifacts --keygen-cases {keygen_cases_per_logn} --sign-cases {sign_cases_per_logn}`"
     )
     .unwrap();
     writeln!(&mut out).unwrap();
@@ -959,6 +1015,12 @@ fn write_optional_hex_entry_ref<T: AsRef<[u8]>>(
             writeln!(out, "      \"{key}\": \"{}\",", to_hex(bytes.as_ref())).unwrap();
         }
     }
+}
+
+#[cfg(feature = "deterministic-tests")]
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    to_hex(digest.as_slice())
 }
 
 #[cfg(feature = "deterministic-tests")]

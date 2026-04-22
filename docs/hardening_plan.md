@@ -30,8 +30,8 @@ The goal is simple:
 - [x] generate machine-readable differential outputs for keygen, signing, encoding, and verification
 - [x] pin fixed seeds, fixed messages, and expected outputs in repo-tracked artifacts
 - [x] add a repo command that regenerates and validates the `R1` artifact set
-- [ ] review and document every remaining semantic mismatch or nondeterministic allowance
-- [ ] mark `R1` closed only after the artifact set is reproducible on the GNU/Linux host
+- [x] review and document every remaining semantic mismatch or nondeterministic allowance
+- [x] mark `R1` closed only after the artifact set is reproducible on the GNU/Linux host
 
 ### `C0`: Exact `ct_strict` Claim Boundary
 
@@ -63,11 +63,10 @@ The goal is simple:
 
 Work should proceed in this order:
 
-1. `R1` reproducible artifacts
-2. GNU/Linux decoder and verification fuzzing
-3. larger-sample dudect-like timing campaigns and review notes
-4. source review dossier for strict-path internals
-5. final claim-language cleanup for `C0` and `C1`
+1. GNU/Linux decoder and verification fuzzing
+2. larger-sample dudect-like timing campaigns and review notes
+3. source review dossier for strict-path internals
+4. final claim-language cleanup for `C0` and `C1`
 
 This order matters. Fuzzing and timing evidence should not be postponed behind architecture cleanup or Hawk work.
 
@@ -85,9 +84,8 @@ The next commits should be small, reviewable, and sequenced.
 8. `audit: record soft-fft branch and memory-access review`
 9. `audit: record strict sampler and signing control-flow review`
 10. `audit: record cargo-audit status and dependency triage`
-11. `docs: close R1 with reproducible differential dossier`
-12. `docs: close C0 claim wording`
-13. `docs: close C1 audit-candidate dossier`
+11. `docs: close C0 claim wording`
+12. `docs: close C1 audit-candidate dossier`
 
 If any commit grows beyond one concrete proof point, split it again.
 

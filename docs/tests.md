@@ -51,7 +51,7 @@ When `deterministic-tests` is enabled, the campaign-level differential checks ar
 - `tests/differential_keygen.rs`: 512 seeded Falcon512 keygens plus 512 seeded Falcon1024 keygens, each compared byte-for-byte against the frozen C helper for public key, secret key, decode roundtrip, and `derive_public()`
 - `tests/differential_derive_public.rs`: fixed-seed derive-public regressions against the frozen C helper for Falcon512 and Falcon1024, gated with the same `deterministic-tests` feature as the other C-dependent campaigns
 - `tests/differential_verify.rs`: 512 seeded Falcon512 signatures plus 512 seeded Falcon1024 signatures, with varied message lengths, varied external nonce lengths, and alternating `Compression::{None, Static}`; every Rust-produced signature must verify both in Rust and in the frozen C verifier
-- `src/bin/r1_artifacts.rs`: reproducible generator/checker for `artifacts/ref-differential-keygen.json`, `artifacts/ref-differential-sign.json`, and `artifacts/ref-differential-summary.md`
+- `src/bin/r1_artifacts.rs`: reproducible generator/checker for `artifacts/ref-differential-keygen.json`, `artifacts/ref-differential-sign.json`, and `artifacts/ref-differential-summary.md`, with independent scales for keygen and signing campaigns; the current tracked GNU/Linux checkpoint is `10_000` keygen cases per public `logn` and `1_000` signing cases per public `logn`
 
 ## Fuzz Harnesses
 
