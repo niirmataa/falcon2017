@@ -38,6 +38,7 @@ Coverage already implemented for the `ct_strict` track:
 - `src/bin/ct_timing.rs`: dudect-like timing harness that records fixed-vs-varied timing datasets for `expand_ct_strict()` and `sign_ct_strict()` into repo-tracked artifacts
 - `artifacts/ct-source-review-soft-fpr.md`: source-review note recording the current branch and memory-access assessment for `src/math/fpr/soft.rs`
 - `artifacts/ct-source-review-soft-fft.md`: source-review note recording the current branch and memory-access assessment for `src/math/fft_soft.rs`
+- `artifacts/ct-source-review-sampler-signing.md`: source-review note recording the current control-flow and memory-access assessment for `src/sampler/sign_ct_strict.rs` and `src/falcon/sign_ct_strict.rs`
 
 Coverage intentionally deferred to later strict steps:
 
