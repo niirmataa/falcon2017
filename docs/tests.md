@@ -39,6 +39,7 @@ Coverage already implemented for the `ct_strict` track:
 - `artifacts/ct-source-review-soft-fpr.md`: source-review note recording the current branch and memory-access assessment for `src/math/fpr/soft.rs`
 - `artifacts/ct-source-review-soft-fft.md`: source-review note recording the current branch and memory-access assessment for `src/math/fft_soft.rs`
 - `artifacts/ct-source-review-sampler-signing.md`: source-review note recording the current control-flow and memory-access assessment for `src/sampler/sign_ct_strict.rs` and `src/falcon/sign_ct_strict.rs`
+- `artifacts/cargo-audit.md` and `artifacts/cargo-audit.json`: recorded dependency-audit result for the current lockfile
 
 Coverage intentionally deferred to later strict steps:
 

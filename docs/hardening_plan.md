@@ -55,7 +55,7 @@ The goal is simple:
 - [x] perform source-level branch and memory-access review for soft FFT
 - [x] perform source-level branch and memory-access review for the strict sampler
 - [x] perform source-level branch and memory-access review for strict signing control flow
-- [ ] run `cargo audit` and record the clean or triaged result
+- [x] run `cargo audit` and record the clean or triaged result
 - [ ] define the residual-risk statement that remains true even if `C1` closes
 - [ ] mark `C1` closed only after fuzz, timing, source review, and release notes all exist
 
@@ -65,7 +65,7 @@ Work should proceed in this order:
 
 1. GNU/Linux decoder and verification fuzzing
 2. larger-sample dudect-like timing campaigns and review notes
-3. dependency-audit triage and residual-risk statement for `C1`
+3. residual-risk statement for `C1`
 4. final `C1` dossier write-up after fuzz and timing artifacts settle
 
 This order matters. Fuzzing and timing evidence should not be postponed behind architecture cleanup or Hawk work.
@@ -76,8 +76,7 @@ The next commits should be small, reviewable, and sequenced.
 
 1. `fuzz: record GNU/Linux decoder and verification campaigns`
 2. `timing: scale strict-path dudect-like evidence`
-3. `audit: record cargo-audit status and dependency triage`
-4. `docs: close C1 audit-candidate dossier`
+3. `docs: close C1 audit-candidate dossier`
 
 If any commit grows beyond one concrete proof point, split it again.
 
