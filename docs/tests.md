@@ -36,6 +36,7 @@ Coverage already implemented for the `ct_strict` track:
 - `tests/ct_consistency.rs` smoke-tests the public `expand_ct_strict()` and `expand_ct_strict_in()` APIs for Falcon512 and Falcon1024, verifies `sign_ct_strict()` and `sign_ct_strict_in()` roundtrips for both public parameter sets, checks determinism plus one-shot/workspace parity on fixed seeds, checks wire-header parity between `ref` and `ct_strict`, includes a timing smoke on fixed seeds, and audits that strict production modules do not directly import `ref_f64` or `libm`
 - `src/sampler/sign_ct_strict.rs` also contains distribution and timing smoke tests for the strict sampler path
 - `src/bin/ct_timing.rs`: dudect-like timing harness that records fixed-vs-varied timing datasets for `expand_ct_strict()` and `sign_ct_strict()` into repo-tracked artifacts
+- `artifacts/ct-source-review-soft-fpr.md`: source-review note recording the current branch and memory-access assessment for `src/math/fpr/soft.rs`
 
 Coverage intentionally deferred to later strict steps:
 
