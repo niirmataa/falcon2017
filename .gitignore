@@ -27,3 +27,6 @@ Thumbs.db
 
 # Local reference archives
 references/falcon-round1.zip
+
+# Local GNU fuzz campaign runs
+/artifacts/fuzz/runs/

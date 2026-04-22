@@ -1,0 +1,21 @@
+name: fuzz-check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fuzz-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        run: rustup toolchain install nightly --profile minimal
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Check fuzz targets
+        run: cargo +nightly fuzz check --fuzz-dir fuzz

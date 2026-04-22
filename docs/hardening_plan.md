@@ -17,6 +17,7 @@ The goal is simple:
 - [x] historical C baseline is kept in-repo under `references/falcon-2017-extra/`
 - [x] Rust `ref` and `ct_strict` paths are split into separate implementation tracks
 - [x] public decoder fuzz targets exist for key and signature artifacts
+- [x] in-repo verification fuzz target exists under `fuzz/fuzz_targets/verify.rs`
 - [x] deterministic differential seed campaigns exist
 - [x] strict-path runtime no longer directly imports `ref_f64` or `libm`
 - [x] Ubuntu toolchain is available with `cargo`, `nightly`, `cargo-fuzz`, `cargo-audit`, `cc`, and `clang`
@@ -25,10 +26,10 @@ The goal is simple:
 
 - [x] baseline scope is written down in `docs/baseline_definition.md`
 - [x] current `ref` claim boundary is written down in `docs/ref_security_claim.md`
-- [ ] define the exact artifact set required for `Rust ref <-> C baseline` comparison
-- [ ] generate machine-readable differential outputs for keygen, signing, encoding, and verification
-- [ ] pin fixed seeds, fixed messages, and expected outputs in repo-tracked artifacts
-- [ ] add a repo command that regenerates and validates the `R1` artifact set
+- [x] define the exact artifact set required for `Rust ref <-> C baseline` comparison
+- [x] generate machine-readable differential outputs for keygen, signing, encoding, and verification
+- [x] pin fixed seeds, fixed messages, and expected outputs in repo-tracked artifacts
+- [x] add a repo command that regenerates and validates the `R1` artifact set
 - [ ] review and document every remaining semantic mismatch or nondeterministic allowance
 - [ ] mark `R1` closed only after the artifact set is reproducible on the GNU/Linux host
 
@@ -45,10 +46,10 @@ The goal is simple:
 
 ### `C1`: Strict-Path Audit-Candidate Dossier
 
-- [ ] add a verification-focused fuzzer on the GNU/Linux ASan host
+- [ ] run the in-repo verification-focused fuzzer on the GNU/Linux ASan host
 - [ ] run long decoder fuzzing with saved corpora and minimized crash artifacts
 - [ ] run long verification fuzzing with saved corpora and minimized crash artifacts
-- [ ] add dudect-like timing harnesses for `expand_ct_strict` and `sign_ct_strict`
+- [x] add dudect-like timing harnesses for `expand_ct_strict` and `sign_ct_strict`
 - [ ] capture timing datasets and review notes in repo-tracked artifacts
 - [ ] perform source-level branch and memory-access review for soft FPR
 - [ ] perform source-level branch and memory-access review for soft FFT
@@ -64,7 +65,7 @@ Work should proceed in this order:
 
 1. `R1` reproducible artifacts
 2. GNU/Linux decoder and verification fuzzing
-3. dudect-like timing harnesses
+3. larger-sample dudect-like timing campaigns and review notes
 4. source review dossier for strict-path internals
 5. final claim-language cleanup for `C0` and `C1`
 
@@ -79,7 +80,7 @@ The next commits should be small, reviewable, and sequenced.
 3. `differential: add Rust-C artifact generator and checker`
 4. `fuzz: add verify_detached libFuzzer harness`
 5. `fuzz: add GNU/Linux corpus and crash-artifact workflow`
-6. `timing: add dudect-like strict-path harnesses`
+6. `timing: scale strict-path dudect-like evidence`
 7. `audit: record soft-fpr branch and memory-access review`
 8. `audit: record soft-fft branch and memory-access review`
 9. `audit: record strict sampler and signing control-flow review`

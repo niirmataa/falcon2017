@@ -1,0 +1,60 @@
+# CT Timing Harness
+
+This document defines the repository's current dudect-like timing workflow for
+the `ct_strict` path.
+
+## Scope
+
+The current in-repo timing harness is:
+
+```bash
+cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts --samples-per-class 256 --expand-batch 4 --sign-batch 4
+```
+
+It emits:
+
+- `artifacts/ct-dynamic-timing.json`
+- `artifacts/ct-dynamic-timing.md`
+
+## What It Measures
+
+The current harness records batch timings for:
+
+- `SecretKey::expand_ct_strict()` on Falcon-512
+- `SecretKey::expand_ct_strict()` on Falcon-1024
+- `ExpandedSecretKeyCt::sign_ct_strict()` on Falcon-512 with `Compression::None`
+- `ExpandedSecretKeyCt::sign_ct_strict()` on Falcon-1024 with `Compression::None`
+
+The fixed class repeats one deterministic input family.
+
+The varied class walks a deterministic family of:
+
+- key-generation seeds
+- signing seeds
+- fixed-length messages
+
+All class comparisons keep the same public parameter size.
+
+## Statistic
+
+The current summary computes Welch's t-statistic between the fixed and varied
+classes.
+
+Working interpretation:
+
+- `|t| < 4.5`: no class separation observed at the current notice threshold
+- `4.5 <= |t| < 10`: investigate on a controlled host
+- `|t| >= 10`: strong separation signal; strong CT wording is blocked
+
+This is dudect-like evidence, not a completed side-channel proof.
+
+## Limits
+
+The current harness does not by itself close `C1`.
+
+Remaining gaps include:
+
+- larger sample counts on the Ubuntu research host
+- repeated runs with pinned CPU/governor discipline
+- review notes tying any observed signal back to specific control-flow causes
+- source-level branch and memory-access review

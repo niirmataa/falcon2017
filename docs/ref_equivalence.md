@@ -109,6 +109,53 @@ The sampler must be validated both operationally and statistically:
 
 This evidence is not complete until the statistical report exists.
 
+## Reproducible Artifact Set
+
+The current in-repo artifact generator is:
+
+```bash
+cargo run --features deterministic-tests --bin r1_artifacts -- all --out-dir artifacts --cases 512
+```
+
+The matching validation command is:
+
+```bash
+cargo run --features deterministic-tests --bin r1_artifacts -- check-all --out-dir artifacts --cases 512
+```
+
+The current deterministic artifact set is:
+
+- `artifacts/ref-differential-keygen.json`
+- `artifacts/ref-differential-sign.json`
+- `artifacts/ref-differential-summary.md`
+
+The pinned deterministic campaigns use:
+
+- keygen seeds: `step-r1-keygen-512`, `step-r1-keygen-1024`
+- signing key seeds: `step-r1-sign-key-512`, `step-r1-sign-key-1024`
+- signing RNG seeds: `step-r1-sign-seed-512`, `step-r1-sign-seed-1024`
+- signing messages: `step-r1-sign-msg-512`, `step-r1-sign-msg-1024`
+- alternating `Compression::{None, Static}` per case
+- current scale: `512` cases per public `logn`
+
+`ref-differential-keygen.json` records, per case:
+
+- the deterministic seed
+- expected encoded public key and secret key from the frozen C baseline
+- pass/fail booleans for Rust keygen, `derive_public()`, and decode/re-encode checks
+- Rust-side raw values only if a mismatch occurs
+
+`ref-differential-sign.json` records, per case:
+
+- key seed, signing seed, message, and compression mode
+- expected nonce and signature body from the frozen C baseline
+- pass/fail booleans for key agreement, nonce/signature agreement, and cross-verification in both implementations
+- Rust-side raw values only if a mismatch occurs
+
+`ref-differential-summary.md` is the deterministic pass/fail digest for the current artifact set.
+
+This artifact set is the repository's current reproducible `R1` checkpoint. The final `10_000`-seed keygen target and the larger equivalence dossier remain open.
+
 ## Required artifacts
 
 Before making the equivalence claim, the repository should contain:
@@ -118,10 +165,11 @@ Before making the equivalence claim, the repository should contain:
 - seed inventories
 - a summary report with pass/fail criteria
 
-Suggested supporting artifacts:
+Current supporting artifacts:
 
 - `artifacts/ref-differential-keygen.json`
 - `artifacts/ref-differential-sign.json`
+- `artifacts/ref-differential-summary.md`
 - `artifacts/ref-sampler-report.md`
 
 ## Stop condition

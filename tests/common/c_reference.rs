@@ -13,6 +13,12 @@ pub struct KeygenOutput {
 }
 
 #[cfg(feature = "deterministic-tests")]
+pub struct SignOutput {
+    pub nonce: Vec<u8>,
+    pub sig: Vec<u8>,
+}
+
+#[cfg(feature = "deterministic-tests")]
 pub fn keygen(logn: u32, seed: &[u8], comp: u32) -> KeygenOutput {
     let output = run_helper(&[
         "keygen",
@@ -23,6 +29,21 @@ pub fn keygen(logn: u32, seed: &[u8], comp: u32) -> KeygenOutput {
     KeygenOutput {
         sk: parse_hex_field(&output, "SK"),
         pk: parse_hex_field(&output, "PK"),
+    }
+}
+
+#[cfg(feature = "deterministic-tests")]
+pub fn sign(sk: &[u8], msg: &[u8], seed: &[u8], comp: u32) -> SignOutput {
+    let output = run_helper(&[
+        "sign",
+        &to_hex(sk),
+        &to_hex(msg),
+        &to_hex(seed),
+        &comp.to_string(),
+    ]);
+    SignOutput {
+        nonce: parse_hex_field(&output, "NONCE"),
+        sig: parse_hex_field(&output, "SIG"),
     }
 }
 
@@ -107,6 +128,7 @@ fn build_helper() -> PathBuf {
         .arg(path_arg(&helper_src))
         .arg(path_arg(&references.join("falcon-enc.c")))
         .arg(path_arg(&references.join("falcon-keygen.c")))
+        .arg(path_arg(&references.join("falcon-sign.c")))
         .arg(path_arg(&references.join("falcon-vrfy.c")))
         .arg(path_arg(&references.join("falcon-fft.c")))
         .arg(path_arg(&references.join("frng.c")))

@@ -170,6 +170,56 @@ cmd_verify(const char *pk_hex, const char *nonce_hex,
 	free(sig);
 }
 
+static void
+cmd_sign(const char *sk_hex, const char *msg_hex,
+	const char *seed_hex, int comp)
+{
+	falcon_sign *fs;
+	size_t sk_len, msg_len, seed_len, sig_len;
+	uint8_t *sk, *msg, *seed, *sig;
+	uint8_t nonce[40];
+	size_t sig_max_len;
+
+	sk = hex_to_bytes(sk_hex, &sk_len);
+	msg = hex_to_bytes(msg_hex, &msg_len);
+	seed = hex_to_bytes(seed_hex, &seed_len);
+	fs = falcon_sign_new();
+	if (fs == NULL) {
+		fprintf(stderr, "falcon_sign_new failed\n");
+		exit(EXIT_FAILURE);
+	}
+	falcon_sign_set_seed(fs, seed, seed_len, 1);
+	if (!falcon_sign_set_private_key(fs, sk, sk_len)) {
+		fprintf(stderr, "falcon_sign_set_private_key failed\n");
+		exit(EXIT_FAILURE);
+	}
+	if (!falcon_sign_start(fs, nonce)) {
+		fprintf(stderr, "falcon_sign_start failed\n");
+		exit(EXIT_FAILURE);
+	}
+	falcon_sign_update(fs, msg, msg_len);
+	sig_max_len = 4096;
+	sig = malloc(sig_max_len);
+	if (sig == NULL) {
+		fprintf(stderr, "allocation failure\n");
+		exit(EXIT_FAILURE);
+	}
+	sig_len = falcon_sign_generate(fs, sig, sig_max_len, comp);
+	if (sig_len == 0) {
+		fprintf(stderr, "falcon_sign_generate failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	print_hex_field("NONCE", nonce, sizeof nonce);
+	print_hex_field("SIG", sig, sig_len);
+
+	falcon_sign_free(fs);
+	free(sk);
+	free(msg);
+	free(seed);
+	free(sig);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -202,6 +252,15 @@ main(int argc, char *argv[])
 			return EXIT_FAILURE;
 		}
 		cmd_verify(argv[2], argv[3], argv[4], argv[5]);
+		return EXIT_SUCCESS;
+	}
+	if (strcmp(argv[1], "sign") == 0) {
+		if (argc != 6) {
+			fprintf(stderr,
+				"usage: sign <sk_hex> <msg_hex> <seed_hex> <comp>\n");
+			return EXIT_FAILURE;
+		}
+		cmd_sign(argv[2], argv[3], argv[4], atoi(argv[5]));
 		return EXIT_SUCCESS;
 	}
 	fprintf(stderr, "unknown command: %s\n", argv[1]);

@@ -35,6 +35,7 @@ Coverage already implemented for the `ct_strict` track:
 - `src/falcon/sign_ct_strict.rs` checks default-nonce and external-nonce signing on preserved reference material through real `verify()` roundtrips
 - `tests/ct_consistency.rs` smoke-tests the public `expand_ct_strict()` and `expand_ct_strict_in()` APIs for Falcon512 and Falcon1024, verifies `sign_ct_strict()` and `sign_ct_strict_in()` roundtrips for both public parameter sets, checks determinism plus one-shot/workspace parity on fixed seeds, checks wire-header parity between `ref` and `ct_strict`, includes a timing smoke on fixed seeds, and audits that strict production modules do not directly import `ref_f64` or `libm`
 - `src/sampler/sign_ct_strict.rs` also contains distribution and timing smoke tests for the strict sampler path
+- `src/bin/ct_timing.rs`: dudect-like timing harness that records fixed-vs-varied timing datasets for `expand_ct_strict()` and `sign_ct_strict()` into repo-tracked artifacts
 
 Coverage intentionally deferred to later strict steps:
 
@@ -50,14 +51,16 @@ When `deterministic-tests` is enabled, the campaign-level differential checks ar
 - `tests/differential_keygen.rs`: 512 seeded Falcon512 keygens plus 512 seeded Falcon1024 keygens, each compared byte-for-byte against the frozen C helper for public key, secret key, decode roundtrip, and `derive_public()`
 - `tests/differential_derive_public.rs`: fixed-seed derive-public regressions against the frozen C helper for Falcon512 and Falcon1024, gated with the same `deterministic-tests` feature as the other C-dependent campaigns
 - `tests/differential_verify.rs`: 512 seeded Falcon512 signatures plus 512 seeded Falcon1024 signatures, with varied message lengths, varied external nonce lengths, and alternating `Compression::{None, Static}`; every Rust-produced signature must verify both in Rust and in the frozen C verifier
+- `src/bin/r1_artifacts.rs`: reproducible generator/checker for `artifacts/ref-differential-keygen.json`, `artifacts/ref-differential-sign.json`, and `artifacts/ref-differential-summary.md`
 
 ## Fuzz Harnesses
 
-In-repo libFuzzer targets now cover the three shared decoders:
+In-repo libFuzzer targets now cover the three shared decoders plus a verification target:
 
 - `fuzz/fuzz_targets/decode_signature.rs`
 - `fuzz/fuzz_targets/decode_public_key.rs`
 - `fuzz/fuzz_targets/decode_secret_key.rs`
+- `fuzz/fuzz_targets/verify.rs`
 
 Current practical status in Alpine WSL:
 
@@ -69,18 +72,27 @@ Current practical status in Alpine WSL:
 
 Longer fuzz campaigns should therefore run on a GNU/Linux host with sanitizer support instead of relying on the local Alpine musl setup.
 
+The current GNU/Linux campaign runner is:
+
+- `scripts/run_gnu_fuzz_campaign.sh --time 1800`
+
+The current CI gate for fuzz target buildability is:
+
+- `.github/workflows/fuzz-check.yml`
+
 ## Audit and Fuzz Direction
 
 Near-term audit-facing goals:
 
-- add a verification-focused fuzzer on the GNU/ASan research host
+- run the in-repo verification-focused fuzzer on the GNU/ASan research host
 - preserve machine-readable differential artifacts for `Rust ref <-> C baseline`
-- add dudect-like statistical timing tests for `expand_ct_strict` and `sign_ct_strict`
+- scale the dudect-like timing harness to larger Ubuntu-host sample counts and recorded review notes
 - record retry histograms for the strict signer and strict sampler
 - run sanitizer and Miri checks on the intended research host
 
 Interpretation rules:
 
 - timing smoke tests are regression guards, not proof of constant-time behavior
+- the dudect-like harness is real dynamic evidence, but current repo-tracked runs are still an initial checkpoint rather than a completed dossier
 - decoder fuzz harnesses are necessary hardening work, not a substitute for semantic differential testing
 - the strict-path audit is not complete until fuzzing, statistical timing, and source review evidence are all recorded

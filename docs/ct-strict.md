@@ -8,7 +8,7 @@ The repository may currently claim:
 
 - a runtime integer-only strict-path signer exists for `Falcon512` and `Falcon1024`
 - public strict modules no longer directly import `ref_f64` or `libm`
-- public strict-path APIs have roundtrip, parity, sampler-budget, and timing-smoke coverage
+- public strict-path APIs have roundtrip, parity, sampler-budget, timing-smoke, and dudect-like timing-harness coverage
 - shared decoder fuzz harnesses exist for artifacts used by both `ref` and `ct_strict`
 
 The repository may not yet claim:
@@ -23,7 +23,7 @@ Reasons gate `C1` remains open:
 - signing still retries until `is_short_binary(...)` accepts
 - the strict sampler still uses acceptance / retry logic
 - `soft` FPR and soft FFT still require source-level branch and memory-access review
-- current timing checks are smoke tests, not dudect-like evidence
+- the current dynamic timing dataset is still an initial dudect-like checkpoint, not a completed large-sample dossier
 - the intended long-run fuzz campaigns are not yet running on the target GNU/ASan host
 
 The stronger claim boundary is defined in `SECURITY.md` and `docs/ct_threat_model.md`.
@@ -133,3 +133,20 @@ Step 30 verification:
 - `cargo test --no-default-features --features ct-strict`
 - `CXX=clang++ cargo check --manifest-path fuzz/Cargo.toml`
 - full `cargo test` on the supported research host
+
+### Step 31
+
+State after Step 31:
+
+- `src/bin/ct_timing.rs` emits repo-tracked dudect-like timing datasets for `expand_ct_strict()` and `sign_ct_strict()`
+- `artifacts/ct-dynamic-timing.json` stores machine-readable fixed-vs-varied timing batches
+- `artifacts/ct-dynamic-timing.md` stores the current timing summary and t-statistic interpretation
+
+Step 31 result:
+
+- the repo now contains a real dynamic timing harness instead of only timing smoke tests
+- the strict-path CT claim is still open until larger-sample Ubuntu-host campaigns and review notes exist
+
+Step 31 verification:
+
+- `cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts --samples-per-class 256 --expand-batch 4 --sign-batch 4`
