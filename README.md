@@ -7,13 +7,15 @@ The repository is intentionally narrow in scope:
 - baseline: Falcon 2017 / Extra, not NIST / FIPS Falcon
 - public parameter sets: binary `Falcon512` and `Falcon1024`
 - wire format: compatible with the preserved C baseline in `references/falcon-2017-extra/`
-- implementation path: first a faithful reference backend, then a strict constant-time signing backend
+- implementation path: first a faithful reference backend, then a strict-path signing backend with CT-focused hardening
 
 The project is being built as a single crate first. Hawk and any shared Falcon/Hawk core are explicitly deferred until Falcon itself reaches its reference and CT milestones.
 
 ## Status
 
-Current checkpoint: `v0.1-step28`
+Current checkpoint: `v0.1-step30`
+
+Strict-path wording follows `SECURITY.md`: `ct_strict` is currently a candidate constant-time backend under active audit hardening, not yet a completed defensively constant-time implementation.
 
 Implemented today:
 
@@ -25,16 +27,23 @@ Implemented today:
 - encode/decode for public keys, secret keys, and signatures
 - SHAKE, PRNG, `fpr`, FFT, NTT/modp, `zint`, and `solve_NTRU`
 - advanced `*_in(...)` APIs with reusable workspaces for the reference path
-- strict-CT expanded secret key storage on `FprSoft`
-- strict-CT sampler helpers with fixed PRNG budgets
-- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}` bridge preserving
+- strict-path expanded secret key storage on `FprSoft`
+- strict-path sampler helpers with fixed PRNG budgets
+- runtime integer-only strict-path signing for `Falcon512` and `Falcon1024`
+- `ExpandedSecretKeyCt::{sign_ct_strict, sign_ct_strict_with_external_nonce}` preserving
   Falcon/Extra wire semantics
-- public `SignCtWorkspace<LOGN>` plus workspace-backed `ExpandedSecretKeyCt::*_in(...)`
+- public `ExpandCtWorkspace<LOGN>` and `SignCtWorkspace<LOGN>` plus workspace-backed
+  strict-path `*_in(...)` APIs
+- strict production modules no longer directly import `ref_f64` or `libm`
+- strict-path roundtrip, parity, distribution-smoke, and timing-smoke coverage
+- shared decoder fuzz harnesses for signature, public-key, and secret-key artifacts
 
 Not implemented yet:
 
-- final integer-only strict constant-time signing executor
-- CT audit, timing smoke tests, and remaining strict-CT coverage
+- reproducible `R1` reference-equivalence artifact set and closure dossier
+- long-run GNU/ASan fuzz campaigns, including verification-focused fuzzing
+- dudect-like timing evidence, retry histograms, and the remaining strict-path audit dossier
+- source-level branch and memory-access review for soft FPR, soft FFT, sampler, and signing control flow
 - Hawk integration
 
 ## Design Constraints
@@ -57,8 +66,8 @@ The implementation flow is deliberate:
 2. Port the reference implementation until `keygen -> sign_ref -> verify` is stable and testable.
 3. Add allocation-aware reference workspaces and harden the public surface.
 4. Close the reference gate (`R1`).
-5. Add the strict constant-time backend on the same math and wire format.
-6. Close the CT gate (`C1`).
+5. Add the strict-path backend on the same math and wire format.
+6. Close the exact strict-path claim boundary (`C0`) and the CT audit gate (`C1`).
 7. Only then evaluate Falcon/Hawk shared abstractions.
 
 This keeps the current crate understandable and auditable while avoiding premature generalization.
@@ -137,6 +146,12 @@ Default build:
 cargo test
 ```
 
+Primary green command for the current scope:
+
+```bash
+cargo test --features std,ref-f64,ct-strict,soft-fpr
+```
+
 Deterministic test helpers:
 
 ```bash
@@ -187,6 +202,19 @@ This means:
 
 The repository does not claim compatibility with later NIST / FIPS Falcon variants.
 
+## License and Reuse
+
+The Rust implementation in this repository is released under the MIT license; see
+`LICENSE`.
+
+The preserved historical baseline under `references/falcon-2017-extra/` keeps its
+own upstream notices and license context.
+
+If you build on this repository, the preferred workflow is to do so through a
+public fork and keep a visible link back to the original repository so the
+project's provenance remains clear. That is a project request, not an extra
+license condition.
+
 ## What This Repository Is Not
 
 It is not:
@@ -198,4 +226,4 @@ It is not:
 - a Hawk repository
 - a standardization-track Falcon implementation
 
-The goal is narrower: get a correct, auditable Falcon 2017 / Extra port into a stable reference state first, then add a strict CT signing backend without changing the external wire format.
+The goal is narrower: get a correct, auditable Falcon 2017 / Extra port into a stable reference state first, then harden a strict-path signing backend on the same external wire format and close the remaining audit gates.
