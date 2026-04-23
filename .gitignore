@@ -30,3 +30,4 @@ references/falcon-round1.zip
 
 # Local GNU fuzz campaign runs
 /artifacts/fuzz/runs/
+/artifacts/timing-runs/

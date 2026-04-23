@@ -40,12 +40,13 @@ Coverage already implemented for the `ct_strict` track:
 - `artifacts/ct-source-review-soft-fft.md`: source-review note recording the current branch and memory-access assessment for `src/math/fft_soft.rs`
 - `artifacts/ct-source-review-sampler-signing.md`: source-review note recording the current control-flow and memory-access assessment for `src/sampler/sign_ct_strict.rs` and `src/falcon/sign_ct_strict.rs`
 - `artifacts/cargo-audit.md` and `artifacts/cargo-audit.json`: recorded dependency-audit result for the current lockfile
+- `artifacts/ct-dynamic-timing-review.md`: interpretation note for two repeated pinned-CPU dudect-like checkpoints on the VMware research host, including the non-reproduced Falcon-512 signing threshold crossing
 - `artifacts/fuzz/c1-gnu-asan-20260423.md` and `artifacts/fuzz/c1-gnu-asan-20260423.json`: curated GNU/Linux ASan fuzz campaign result for the decoder and verification targets
 
 Coverage intentionally deferred to later strict steps:
 
 - broader side-channel validation
-- larger-scale statistical campaigns for the runtime integer-only strict executor
+- quieter-host repeated statistical campaigns for the runtime integer-only strict executor
 - machine-readable retry histograms
 - long-run GNU/ASan fuzz evidence for strict-path related surfaces
 
@@ -91,13 +92,13 @@ Near-term audit-facing goals:
 
 - run the in-repo verification-focused fuzzer on the GNU/ASan research host
 - preserve machine-readable differential artifacts for `Rust ref <-> C baseline`
-- scale the dudect-like timing harness to larger Ubuntu-host sample counts and recorded review notes
+- rerun the dudect-like timing harness on a quieter or bare-metal host and add retry-histogram evidence
 - record retry histograms for the strict signer and strict sampler
 - run sanitizer and Miri checks on the intended research host
 
 Interpretation rules:
 
 - timing smoke tests are regression guards, not proof of constant-time behavior
-- the dudect-like harness is real dynamic evidence, but current repo-tracked runs are still an initial checkpoint rather than a completed dossier
+- the dudect-like harness is real dynamic evidence, but the current repeated VMware-host checkpoints are not stable enough to close `C1` or support stronger CT wording
 - decoder fuzz harnesses are necessary hardening work, not a substitute for semantic differential testing
 - the strict-path audit is not complete until fuzzing, statistical timing, and source review evidence are all recorded

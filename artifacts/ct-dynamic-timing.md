@@ -1,74 +1,75 @@
 # CT Dynamic Timing Summary
 
-- generated_at_unix_s: `1776866874`
+- generated_at_unix_s: `1776926383`
 - host: `linux/x86_64`
 - hostname: `unknown`
-- samples per class: `256`
+- samples per class: `4096`
 - dudect-like thresholds: notice `|t| >= 4.5`, strong `|t| >= 10.0`
 
 This is a dudect-like timing checkpoint, not an audit-closed constant-time proof.
 The fixed class repeats one deterministic input family; the varied class walks a deterministic seed family of equal public size.
+Interpret this dataset together with `artifacts/ct-dynamic-timing-review.md`, which compares it against an immediate repeated pinned-CPU run on the same VMware host.
 
 ## expand_ct_strict_falcon512
 
 - operation: `expand_ct_strict`
 - logn: `9`
-- batch: `4`
+- batch: `8`
 - fixed class: `fixed_secret_key`
 - varied class: `varied_secret_keys`
-- mean fixed per call: `2897066.3 ns`
-- mean varied per call: `2926002.5 ns`
-- median fixed batch: `11209092` ns
-- median varied batch: `11342573` ns
-- p95 fixed batch: `14185438` ns
-- p95 varied batch: `14194074` ns
-- Welch t: `-0.666`
+- mean fixed per call: `3659139.2 ns`
+- mean varied per call: `3666392.3 ns`
+- median fixed batch: `26770303` ns
+- median varied batch: `26896438` ns
+- p95 fixed batch: `44354371` ns
+- p95 varied batch: `44020859` ns
+- Welch t: `-0.221`
 - interpretation: no class separation observed at the current dudect notice threshold on this host
 
 ## expand_ct_strict_falcon1024
 
 - operation: `expand_ct_strict`
 - logn: `10`
-- batch: `4`
+- batch: `8`
 - fixed class: `fixed_secret_key`
 - varied class: `varied_secret_keys`
-- mean fixed per call: `6426293.0 ns`
-- mean varied per call: `6384628.3 ns`
-- median fixed batch: `24810467` ns
-- median varied batch: `24968736` ns
-- p95 fixed batch: `31904224` ns
-- p95 varied batch: `30704330` ns
-- Welch t: `0.575`
+- mean fixed per call: `7834752.8 ns`
+- mean varied per call: `8053052.4 ns`
+- median fixed batch: `59740649` ns
+- median varied batch: `59531559` ns
+- p95 fixed batch: `88536768` ns
+- p95 varied batch: `88745552` ns
+- Welch t: `-1.462`
 - interpretation: no class separation observed at the current dudect notice threshold on this host
 
 ## sign_ct_strict_falcon512_none
 
 - operation: `sign_ct_strict`
 - logn: `9`
-- batch: `4`
+- batch: `8`
 - fixed class: `fixed_key_message_rng`
 - varied class: `varied_key_message_rng`
-- mean fixed per call: `4686400.6 ns`
-- mean varied per call: `4745095.0 ns`
-- median fixed batch: `18296265` ns
-- median varied batch: `18604998` ns
-- p95 fixed batch: `21890398` ns
-- p95 varied batch: `23300067` ns
-- Welch t: `-1.089`
-- interpretation: no class separation observed at the current dudect notice threshold on this host
+- mean fixed per call: `8325674.7 ns`
+- mean varied per call: `8845616.1 ns`
+- median fixed batch: `58489967` ns
+- median varied batch: `61798408` ns
+- p95 fixed batch: `111713688` ns
+- p95 varied batch: `121112269` ns
+- Welch t: `-5.890`
+- interpretation: class separation crossed the dudect notice threshold; rerun on a controlled host and investigate
 
 ## sign_ct_strict_falcon1024_none
 
 - operation: `sign_ct_strict`
 - logn: `10`
-- batch: `4`
+- batch: `8`
 - fixed class: `fixed_key_message_rng`
 - varied class: `varied_key_message_rng`
-- mean fixed per call: `10587678.9 ns`
-- mean varied per call: `10556171.2 ns`
-- median fixed batch: `40965623` ns
-- median varied batch: `41299182` ns
-- p95 fixed batch: `50498301` ns
-- p95 varied batch: `50144654` ns
-- Welch t: `0.255`
+- mean fixed per call: `11324297.8 ns`
+- mean varied per call: `11311620.0 ns`
+- median fixed batch: `82758507` ns
+- median varied batch: `82644336` ns
+- p95 fixed batch: `133602525` ns
+- p95 varied batch: `133519639` ns
+- Welch t: `0.158`
 - interpretation: no class separation observed at the current dudect notice threshold on this host

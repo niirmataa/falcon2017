@@ -22,8 +22,8 @@ Reasons gate `C1` remains open:
 
 - signing still retries until `is_short_binary(...)` accepts
 - the strict sampler still uses acceptance / retry logic
-- the current dynamic timing dataset is still an initial dudect-like checkpoint, not a completed large-sample dossier
-- one GNU/Linux ASan fuzz campaign is now recorded, but the timing dossier and final release-language synthesis remain open
+- repeated large-sample timing checkpoints on the current VMware host are not stable enough to support stronger CT wording; one `sign_ct_strict_falcon512_none` run crossed the notice threshold and the immediate repeat did not
+- one GNU/Linux ASan fuzz campaign is now recorded, but residual-risk wording and final release-language synthesis remain open
 
 The exact `C0` claim boundary is fixed in `SECURITY.md` and `docs/c0_claim_boundary.md`; the stronger `C1` requirements remain in `docs/ct_threat_model.md`.
 
@@ -144,8 +144,9 @@ State after Step 31:
 Step 31 result:
 
 - the repo now contains a real dynamic timing harness instead of only timing smoke tests
-- the strict-path CT claim is still open until larger-sample Ubuntu-host campaigns and review notes exist
+- the strict-path CT claim is still open; repeated pinned-CPU runs now exist, but the current VMware host does not provide a stable enough dynamic timing dossier for stronger wording
 
 Step 31 verification:
 
 - `cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts --samples-per-class 256 --expand-batch 4 --sign-batch 4`
+- repeated pinned-CPU 4096-sample checkpoints are summarized in `artifacts/ct-dynamic-timing-review.md`

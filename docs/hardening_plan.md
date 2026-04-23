@@ -50,7 +50,7 @@ The goal is simple:
 - [x] run long decoder fuzzing with saved corpora and minimized crash artifacts
 - [x] run long verification fuzzing with saved corpora and minimized crash artifacts
 - [x] add dudect-like timing harnesses for `expand_ct_strict` and `sign_ct_strict`
-- [ ] capture timing datasets and review notes in repo-tracked artifacts
+- [x] capture timing datasets and review notes in repo-tracked artifacts
 - [x] perform source-level branch and memory-access review for soft FPR
 - [x] perform source-level branch and memory-access review for soft FFT
 - [x] perform source-level branch and memory-access review for the strict sampler
@@ -63,8 +63,8 @@ The goal is simple:
 
 Work should proceed in this order:
 
-1. larger-sample dudect-like timing campaigns and review notes
-2. residual-risk statement for `C1`
+1. residual-risk statement for `C1`
+2. repeat timing on a quieter or bare-metal host and pair it with retry histograms
 3. final `C1` dossier write-up after timing artifacts settle
 
 This order matters. Fuzzing and timing evidence should not be postponed behind architecture cleanup or Hawk work.
@@ -73,8 +73,9 @@ This order matters. Fuzzing and timing evidence should not be postponed behind a
 
 The next commits should be small, reviewable, and sequenced.
 
-1. `timing: scale strict-path dudect-like evidence`
-2. `docs: close C1 audit-candidate dossier`
+1. `docs: define C1 residual-risk statement`
+2. `timing: rerun strict-path timing on quieter host`
+3. `docs: close C1 audit-candidate dossier`
 
 If any commit grows beyond one concrete proof point, split it again.
 
