@@ -78,3 +78,24 @@ Interpretation rules:
 - a crash artifact must be preserved together with the target log and minimized case
 - long-run fuzz evidence belongs in the `C1` dossier, not in the `R1` equivalence claim
 - fuzzing complements, but does not replace, differential testing and timing analysis
+
+## Tracked GNU/Linux ASan Checkpoint
+
+The repository now tracks one curated GNU/Linux ASan campaign result under:
+
+- `artifacts/fuzz/c1-gnu-asan-20260423.json`
+- `artifacts/fuzz/c1-gnu-asan-20260423.md`
+
+This checkpoint records a clean 1800-second campaign for:
+
+- `decode_signature`
+- `decode_public_key`
+- `decode_secret_key`
+- `verify`
+
+Current recorded result:
+
+- all four targets exited with status `0`
+- no crash artifacts were emitted
+- decoder targets reached large multi-million to multi-hundred-million execution counts
+- the verification target completed cleanly at lower throughput and remains a good candidate for longer dedicated campaigns later

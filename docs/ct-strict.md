@@ -23,7 +23,7 @@ Reasons gate `C1` remains open:
 - signing still retries until `is_short_binary(...)` accepts
 - the strict sampler still uses acceptance / retry logic
 - the current dynamic timing dataset is still an initial dudect-like checkpoint, not a completed large-sample dossier
-- the intended long-run fuzz campaigns are not yet running on the target GNU/ASan host
+- one GNU/Linux ASan fuzz campaign is now recorded, but the timing dossier and final release-language synthesis remain open
 
 The exact `C0` claim boundary is fixed in `SECURITY.md` and `docs/c0_claim_boundary.md`; the stronger `C1` requirements remain in `docs/ct_threat_model.md`.
 

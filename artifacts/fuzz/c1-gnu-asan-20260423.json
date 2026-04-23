@@ -1,0 +1,57 @@
+{
+  "run_id": "c1-20260423T000704Z",
+  "generated_at_utc": "2026-04-22T22:07:05Z",
+  "host": "Linux 6.17.0-22-generic #22~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Mar 26 15:25:54 UTC 2 x86_64 GNU/Linux",
+  "sanitizer": "address",
+  "target_triple": "x86_64-unknown-linux-gnu",
+  "jobs": 1,
+  "max_total_time": 1800,
+  "targets": {
+    "decode_signature": {
+      "status": 0,
+      "executed_units": 148762060,
+      "average_exec_per_sec": 82599,
+      "new_units_added": 249,
+      "peak_rss_mb": 534,
+      "done_runs": 148762060,
+      "done_seconds": 1801,
+      "artifact_files": 0,
+      "minimized_crash_files": 0
+    },
+    "decode_public_key": {
+      "status": 0,
+      "executed_units": 503825063,
+      "average_exec_per_sec": 279747,
+      "new_units_added": 6,
+      "peak_rss_mb": 596,
+      "done_runs": 503825063,
+      "done_seconds": 1801,
+      "artifact_files": 0,
+      "minimized_crash_files": 0
+    },
+    "decode_secret_key": {
+      "status": 0,
+      "executed_units": 214986013,
+      "average_exec_per_sec": 119370,
+      "new_units_added": 511,
+      "peak_rss_mb": 621,
+      "done_runs": 214986013,
+      "done_seconds": 1801,
+      "artifact_files": 0,
+      "minimized_crash_files": 0
+    },
+    "verify": {
+      "status": 0,
+      "executed_units": 6365718,
+      "average_exec_per_sec": 3534,
+      "new_units_added": 3,
+      "peak_rss_mb": 426,
+      "done_runs": 6365718,
+      "done_seconds": 1801,
+      "artifact_files": 0,
+      "minimized_crash_files": 0
+    }
+  },
+  "artifact_files": 0,
+  "minimized_crash_files": 0
+}

@@ -46,9 +46,9 @@ The goal is simple:
 
 ### `C1`: Strict-Path Audit-Candidate Dossier
 
-- [ ] run the in-repo verification-focused fuzzer on the GNU/Linux ASan host
-- [ ] run long decoder fuzzing with saved corpora and minimized crash artifacts
-- [ ] run long verification fuzzing with saved corpora and minimized crash artifacts
+- [x] run the in-repo verification-focused fuzzer on the GNU/Linux ASan host
+- [x] run long decoder fuzzing with saved corpora and minimized crash artifacts
+- [x] run long verification fuzzing with saved corpora and minimized crash artifacts
 - [x] add dudect-like timing harnesses for `expand_ct_strict` and `sign_ct_strict`
 - [ ] capture timing datasets and review notes in repo-tracked artifacts
 - [x] perform source-level branch and memory-access review for soft FPR
@@ -63,10 +63,9 @@ The goal is simple:
 
 Work should proceed in this order:
 
-1. GNU/Linux decoder and verification fuzzing
-2. larger-sample dudect-like timing campaigns and review notes
-3. residual-risk statement for `C1`
-4. final `C1` dossier write-up after fuzz and timing artifacts settle
+1. larger-sample dudect-like timing campaigns and review notes
+2. residual-risk statement for `C1`
+3. final `C1` dossier write-up after timing artifacts settle
 
 This order matters. Fuzzing and timing evidence should not be postponed behind architecture cleanup or Hawk work.
 
@@ -74,9 +73,8 @@ This order matters. Fuzzing and timing evidence should not be postponed behind a
 
 The next commits should be small, reviewable, and sequenced.
 
-1. `fuzz: record GNU/Linux decoder and verification campaigns`
-2. `timing: scale strict-path dudect-like evidence`
-3. `docs: close C1 audit-candidate dossier`
+1. `timing: scale strict-path dudect-like evidence`
+2. `docs: close C1 audit-candidate dossier`
 
 If any commit grows beyond one concrete proof point, split it again.
 
