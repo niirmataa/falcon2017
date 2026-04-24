@@ -22,7 +22,7 @@ Reasons gate `C1` remains open:
 
 - signing still retries until `is_short_binary(...)` accepts
 - the strict sampler still uses acceptance / retry logic
-- repeated large-sample timing checkpoints on the current VMware host are not stable enough to support stronger CT wording; one `sign_ct_strict_falcon512_none` run crossed the notice threshold and two immediate repeats did not
+- repeated large-sample timing checkpoints on the current VMware host are not stable enough to support stronger CT wording; one `sign_ct_strict_falcon512_none` run crossed the notice threshold and later repeats did not, while the longer `sign_ct_strict_falcon1024_none` run crossed the notice threshold
 - one GNU/Linux ASan fuzz campaign is now recorded, but residual-risk wording and final release-language synthesis remain open
 
 The exact `C0` claim boundary is fixed in `SECURITY.md` and `docs/c0_claim_boundary.md`; the stronger `C1` requirements remain in `docs/ct_threat_model.md`.

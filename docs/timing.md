@@ -73,16 +73,18 @@ The current tracked summary file comes from the first large-sample pinned run:
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T083941Z --samples-per-class 4096 --expand-batch 8 --sign-batch 8
 ```
 
-Two direct repeated runs on the same host and with the same nominal configuration were also captured and summarized in `artifacts/ct-dynamic-timing-review.md`:
+Two direct repeated 4096-sample runs and one longer 16384-sample run on the same host were also captured and summarized in `artifacts/ct-dynamic-timing-review.md`:
 
 ```bash
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T-repeat2 --samples-per-class 4096 --expand-batch 8 --sign-batch 8
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T-repeat3 --samples-per-class 4096 --expand-batch 8 --sign-batch 8
+taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-long-20260424T080636Z --samples-per-class 16384 --expand-batch 8 --sign-batch 8
 ```
 
 Current tracked interpretation:
 
 - the host is a VMware guest and does not expose cpufreq governor control through `/sys/devices/system/cpu/cpu0/cpufreq/`
-- three of the four benchmarks remained below the notice threshold in all three runs
-- `sign_ct_strict_falcon512_none` crossed the notice threshold in the first run (`t = -5.890`) but not in the two immediate repeats (`t = 1.032`, `t = 1.434`)
+- both `expand_ct_strict()` benchmarks remained below the notice threshold in all tracked runs
+- `sign_ct_strict_falcon512_none` crossed the notice threshold in the first 4096-sample run (`t = -5.890`) but not in the two immediate repeats (`t = 1.032`, `t = 1.434`) or the long run (`t = -0.142`)
+- `sign_ct_strict_falcon1024_none` crossed the notice threshold in the long run (`t = -9.751`) after staying below the threshold in the three 4096-sample runs
 - the current host therefore gives useful blocking evidence, but not a stable enough timing platform to support stronger CT wording or to close `C1`

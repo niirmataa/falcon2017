@@ -2,7 +2,7 @@
 
 This note interprets the repeated large-sample dudect-like timing checkpoints for
 `expand_ct_strict()` and `sign_ct_strict()` that were run on the Ubuntu research
-host. The canonical summary snapshot is `artifacts/ct-dynamic-timing.md`; the third run is tracked under `artifacts/timing-runs/c1-ct-timing-20260423T-repeat3/`.
+host. The canonical summary snapshot is `artifacts/ct-dynamic-timing.md`; the third 4096-sample run is tracked under `artifacts/timing-runs/c1-ct-timing-20260423T-repeat3/`, and the longer 16384-sample run is tracked under `artifacts/timing-runs/c1-ct-timing-long-20260424T080636Z/`.
 
 ## Host and Method
 
@@ -11,8 +11,9 @@ host. The canonical summary snapshot is `artifacts/ct-dynamic-timing.md`; the th
 - CPU model from `/proc/cpuinfo`: `AMD Ryzen 3 5300U with Radeon Graphics`
 - visible CPUs: `4`
 - cpufreq governor interface: not exposed under `/sys/devices/system/cpu/cpu0/cpufreq/` on this host
-- all three runs were pinned to logical CPU `0` with `taskset -c 0`
-- all three runs used `--samples-per-class 4096 --expand-batch 8 --sign-batch 8`
+- all tracked runs were pinned to logical CPU `0` with `taskset -c 0`
+- the first three runs used `--samples-per-class 4096 --expand-batch 8 --sign-batch 8`
+- the longer run used `--samples-per-class 16384 --expand-batch 8 --sign-batch 8`
 
 Commands used:
 
@@ -20,24 +21,26 @@ Commands used:
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T083941Z --samples-per-class 4096 --expand-batch 8 --sign-batch 8
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T-repeat2 --samples-per-class 4096 --expand-batch 8 --sign-batch 8
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T-repeat3 --samples-per-class 4096 --expand-batch 8 --sign-batch 8
+taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-long-20260424T080636Z --samples-per-class 16384 --expand-batch 8 --sign-batch 8
 ```
 
 ## Welch t Summary
 
-| Benchmark | Run 1 t | Run 2 t | Run 3 t | Notes |
-| --- | ---: | ---: | ---: | --- |
-| `expand_ct_strict_falcon512` | `-0.221` | `1.301` | `-1.315` | all runs below notice threshold |
-| `expand_ct_strict_falcon1024` | `-1.462` | `0.222` | `1.359` | all runs below notice threshold |
-| `sign_ct_strict_falcon512_none` | `-5.890` | `1.032` | `1.434` | first run crossed notice threshold; two repeats did not |
-| `sign_ct_strict_falcon1024_none` | `0.158` | `1.532` | `1.162` | all runs below notice threshold |
+| Benchmark | Run 1 t | Run 2 t | Run 3 t | Long run t | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `expand_ct_strict_falcon512` | `-0.221` | `1.301` | `-1.315` | `0.250` | all runs below notice threshold |
+| `expand_ct_strict_falcon1024` | `-1.462` | `0.222` | `1.359` | `-0.753` | all runs below notice threshold |
+| `sign_ct_strict_falcon512_none` | `-5.890` | `1.032` | `1.434` | `-0.142` | one 4096-sample run crossed notice threshold; later repeats did not |
+| `sign_ct_strict_falcon1024_none` | `0.158` | `1.532` | `1.162` | `-9.751` | long run crossed notice threshold and approached strong threshold |
 
 ## Interpretation
 
-- Three of the four benchmarks remained below the notice threshold in all three runs.
-- `sign_ct_strict_falcon512_none` crossed the notice threshold in the first run, but two immediate repeated runs on the same nominal host and command line did not reproduce that signal.
+- The two `expand_ct_strict()` benchmarks remained below the notice threshold in every tracked run.
+- `sign_ct_strict_falcon512_none` crossed the notice threshold in the first 4096-sample run, but two immediate 4096-sample repeats and the longer 16384-sample run did not reproduce that signal.
+- `sign_ct_strict_falcon1024_none` stayed below the notice threshold in the three 4096-sample runs, but crossed the notice threshold in the longer 16384-sample run with `t = -9.751`.
 - The correct reading is therefore **not** "strict signing is proven constant-time" and also **not** "a stable Falcon-512 timing leak is already demonstrated".
-- The correct reading is that the current VMware-host timing setup is still too noisy or insufficiently controlled to support stronger CT wording.
-- This repo should therefore keep `C1` open and treat the current timing evidence as a blocking but inconclusive dossier checkpoint.
+- The correct reading is that the current VMware-host timing setup and the strict signing control flow still require more investigation before any stronger CT wording.
+- This repo should therefore keep `C1` open and treat the current timing evidence as a blocking dossier checkpoint.
 
 ## Residual Technical Suspicion
 

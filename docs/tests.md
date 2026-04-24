@@ -40,7 +40,7 @@ Coverage already implemented for the `ct_strict` track:
 - `artifacts/ct-source-review-soft-fft.md`: source-review note recording the current branch and memory-access assessment for `src/math/fft_soft.rs`
 - `artifacts/ct-source-review-sampler-signing.md`: source-review note recording the current control-flow and memory-access assessment for `src/sampler/sign_ct_strict.rs` and `src/falcon/sign_ct_strict.rs`
 - `artifacts/cargo-audit.md` and `artifacts/cargo-audit.json`: recorded dependency-audit result for the current lockfile
-- `artifacts/ct-dynamic-timing-review.md`: interpretation note for three repeated pinned-CPU dudect-like checkpoints on the VMware research host, including the non-reproduced Falcon-512 signing threshold crossing
+- `artifacts/ct-dynamic-timing-review.md`: interpretation note for three repeated pinned-CPU dudect-like checkpoints on the VMware research host, including the non-reproduced Falcon-512 signing threshold crossing and the longer Falcon-1024 signing threshold crossing
 - `artifacts/fuzz/c1-gnu-asan-20260423.md` and `artifacts/fuzz/c1-gnu-asan-20260423.json`: curated GNU/Linux ASan fuzz campaign result for the decoder and verification targets
 
 Coverage intentionally deferred to later strict steps:
