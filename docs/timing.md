@@ -73,15 +73,16 @@ The current tracked summary file comes from the first large-sample pinned run:
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T083941Z --samples-per-class 4096 --expand-batch 8 --sign-batch 8
 ```
 
-A direct repeated run on the same host and with the same nominal configuration was also captured and summarized in `artifacts/ct-dynamic-timing-review.md`:
+Two direct repeated runs on the same host and with the same nominal configuration were also captured and summarized in `artifacts/ct-dynamic-timing-review.md`:
 
 ```bash
 taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T-repeat2 --samples-per-class 4096 --expand-batch 8 --sign-batch 8
+taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T-repeat3 --samples-per-class 4096 --expand-batch 8 --sign-batch 8
 ```
 
 Current tracked interpretation:
 
 - the host is a VMware guest and does not expose cpufreq governor control through `/sys/devices/system/cpu/cpu0/cpufreq/`
-- three of the four benchmarks remained below the notice threshold in both repeated runs
-- `sign_ct_strict_falcon512_none` crossed the notice threshold in the first run (`t = -5.890`) but not in the immediate repeat (`t = 1.032`)
+- three of the four benchmarks remained below the notice threshold in all three runs
+- `sign_ct_strict_falcon512_none` crossed the notice threshold in the first run (`t = -5.890`) but not in the two immediate repeats (`t = 1.032`, `t = 1.434`)
 - the current host therefore gives useful blocking evidence, but not a stable enough timing platform to support stronger CT wording or to close `C1`

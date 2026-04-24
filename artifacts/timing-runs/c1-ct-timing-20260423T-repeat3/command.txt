@@ -1,0 +1,3 @@
+cd /home/falcon/work/falcon2017
+source ~/.cargo/env
+taskset -c 0 cargo run --release --features deterministic-tests --bin ct_timing -- --out-dir artifacts/timing-runs/c1-ct-timing-20260423T-repeat3 --samples-per-class 4096 --expand-batch 8 --sign-batch 8
