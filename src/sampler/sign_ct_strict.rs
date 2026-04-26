@@ -125,7 +125,9 @@ fn gaussian0_sampler_ct(prng: &mut Prng) -> i32 {
         let eq_hi = u64::from(hi == cdf.hi);
         let ge_lo = u64::from(lo >= cdf.lo);
         let ge = gt_hi | (eq_hi & ge_lo);
-        let take = ge & (!found);
+        debug_assert!(ge <= 1);
+        debug_assert!(found <= 1);
+        let take = ge & (found ^ 1);
         sample ^= (sample ^ z as i32) & (0i32.wrapping_sub(take as i32));
         found |= ge;
     }
@@ -134,10 +136,14 @@ fn gaussian0_sampler_ct(prng: &mut Prng) -> i32 {
 
 fn ber_exp_ct(prng: &mut Prng, x: Fpr) -> bool {
     let s = fpr_floor(fpr_div(x, FPR_LOG2));
-    let r = fpr_sub(x, fpr_mul(fpr_of(s), FPR_LOG2));
+    debug_assert!(s >= 0, "ber_exp_ct expects x >= 0");
 
-    let mut sw = s as u32;
-    sw ^= (sw ^ 63) & 0u32.wrapping_sub((63u32.wrapping_sub(sw)) >> 31);
+    let s_nonneg = ((s as u64) & !((s >> 63) as u64)) as i64;
+    let r = fpr_sub(x, fpr_mul(fpr_of(s_nonneg), FPR_LOG2));
+
+    let mut sw = s_nonneg as u64;
+    sw ^= (sw ^ 63) & 0u64.wrapping_sub((63u64.wrapping_sub(sw)) >> 63);
+    let sw = sw as u32;
 
     let z = fpr_rint(fpr_mul(fpr_exp_small(fpr_neg(r)), FPR_P55)) as u64;
 
@@ -152,6 +158,8 @@ fn ber_exp_ct(prng: &mut Prng, x: Fpr) -> bool {
 }
 
 pub(crate) fn sample_binary_ct(prng: &mut Prng, mu: Fpr, sigma: Fpr) -> i32 {
+    // Per-attempt helpers are fixed-budget, but Falcon sampling semantics keep
+    // the top-level rejection loop variable-attempt.
     let s = fpr_floor(mu);
     let r = fpr_sub(mu, fpr_of(s));
     let dss = fpr_inv(fpr_mul(fpr_sqr(sigma), fpr_of(2)));
@@ -216,6 +224,7 @@ mod tests {
         let mu = fpr(1.375);
         let sigma = fpr(1.8205);
 
+        // Golden test: update only when intentionally changing sampler behavior.
         let got = [
             sample_binary_ct(&mut prng, mu, sigma),
             sample_binary_ct(&mut prng, mu, sigma),
@@ -269,6 +278,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "wall-clock smoke only; use ct_timing for audit evidence"]
     fn gaussian0_sampler_timing_smoke_is_stable() {
         let mut prng_a = prng_from_seed(b"falcon2017-step30-gauss-time-a");
         let mut prng_b = prng_from_seed(b"falcon2017-step30-gauss-time-b");
@@ -294,6 +304,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "wall-clock smoke only; use ct_timing for audit evidence"]
     fn ber_exp_timing_smoke_is_stable() {
         let mut prng_a = prng_from_seed(b"falcon2017-step30-berexp-time-a");
         let mut prng_b = prng_from_seed(b"falcon2017-step30-berexp-time-b");

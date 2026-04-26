@@ -34,7 +34,7 @@ Coverage already implemented for the `ct_strict` track:
 - `src/sampler/sign_ct_strict.rs` checks fixed per-attempt PRNG budgets for the CDF/CT_BEREXP sampler path and stabilizes a short deterministic regression sequence
 - `src/falcon/sign_ct_strict.rs` checks default-nonce and external-nonce signing on preserved reference material through real `verify()` roundtrips
 - `tests/ct_consistency.rs` smoke-tests the public `expand_ct_strict()` and `expand_ct_strict_in()` APIs for Falcon512 and Falcon1024, verifies `sign_ct_strict()` and `sign_ct_strict_in()` roundtrips for both public parameter sets, checks determinism plus one-shot/workspace parity on fixed seeds, checks wire-header parity between `ref` and `ct_strict`, includes a timing smoke on fixed seeds, and audits that strict production modules do not directly import `ref_f64` or `libm`
-- `src/sampler/sign_ct_strict.rs` also contains distribution and timing smoke tests for the strict sampler path
+- `src/sampler/sign_ct_strict.rs` also contains distribution smoke tests and ignored manual-only wall-clock timing smoke tests for the strict sampler path; audit-facing timing evidence comes from `src/bin/ct_timing.rs`
 - `src/bin/ct_timing.rs`: dudect-like timing harness that records fixed-vs-varied timing datasets for `expand_ct_strict()` and `sign_ct_strict()` into repo-tracked artifacts
 - `artifacts/ct-source-review-soft-fpr.md`: source-review note recording the current branch and memory-access assessment for `src/math/fpr/soft.rs`
 - `artifacts/ct-source-review-soft-fft.md`: source-review note recording the current branch and memory-access assessment for `src/math/fft_soft.rs`
@@ -98,7 +98,7 @@ Near-term audit-facing goals:
 
 Interpretation rules:
 
-- timing smoke tests are regression guards, not proof of constant-time behavior
+- timing smoke tests are regression guards, not proof of constant-time behavior; sampler wall-clock smoke tests are ignored by default and should not be used as audit evidence
 - the dudect-like harness is real dynamic evidence, but the current repeated VMware-host checkpoints are not stable enough to close `C1` or support stronger CT wording
 - decoder fuzz harnesses are necessary hardening work, not a substitute for semantic differential testing
 - the strict-path audit is not complete until fuzzing, statistical timing, and source review evidence are all recorded

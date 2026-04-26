@@ -61,7 +61,7 @@ State after Step 25:
 
 - `src/sampler/sign_ct_strict.rs` implements the `SAMPLER_CDF=1` and `CT_BEREXP=1` path
 - `gaussian0_sampler_ct()` consumes a fixed PRNG budget for a single attempt
-- `ber_exp_ct()` consumes a fixed PRNG budget for a single attempt
+- `ber_exp_ct()` consumes a fixed PRNG budget for a single attempt and documents the `x >= 0` precondition used by the Falcon rejection formula
 
 Step 25 verification:
 
@@ -116,7 +116,7 @@ Step 29 verification:
 State after Step 30:
 
 - `tests/ct_consistency.rs` covers strict-path roundtrips, one-shot / workspace parity, header parity against `ref`, and timing smoke on fixed seeds
-- `src/sampler/sign_ct_strict.rs` contains distribution smoke and timing smoke for the strict sampler
+- `src/sampler/sign_ct_strict.rs` contains distribution smoke and manual-only wall-clock timing smoke for the strict sampler
 - `fuzz/decode_signature` is a compilable `libFuzzer` harness for the shared signature decoder
 
 Step 30 result:

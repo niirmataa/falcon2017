@@ -78,7 +78,8 @@ and `ber_exp_ct`, but the top-level sampler still retries until acceptance:
 - acceptance depends on the sampled candidate and operand-derived probability
 
 This means per-attempt budget is fixed, but total attempt count is still
-variable.
+variable. This is a documented known limitation, not a property hidden behind the
+`ct_strict` label.
 
 ### `src/falcon/sign_ct_strict.rs`
 

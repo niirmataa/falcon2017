@@ -33,13 +33,16 @@ The reviewed files still contain acceptance-driven control flow.
 
 - per-attempt helpers
   - `gaussian0_sampler_ct()` uses a fixed linear walk over the static `CDF`
-    table and a fixed PRNG budget for one attempt
-  - `ber_exp_ct()` uses a fixed PRNG budget for one attempt
+    table and a fixed PRNG budget for one attempt; the first-hit selection uses
+    an explicit bit flip (`found ^ 1`) instead of complementing the full word
+  - `ber_exp_ct()` uses a fixed PRNG budget for one attempt and now records the
+    `x >= 0` precondition with a debug assertion before clamping the shift count
 - top-level sampling
   - `sample_binary_ct()` loops until `ber_exp_ct(...)` accepts a candidate
 
 This means the sampler has a fixed budget per attempt, but the total number of
-attempts remains variable.
+attempts remains variable. That variable rejection loop is a known limitation of
+the current strict path and is not claimed to be defensively constant-time.
 
 ### Strict signing
 
