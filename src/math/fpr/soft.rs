@@ -248,6 +248,21 @@ fn isqrt_u128(n: u128) -> u128 {
     res
 }
 
+fn divrem_u128_ct(num: u128, den: u128) -> (u128, u128) {
+    let mut q = 0u128;
+    let mut r = 0u128;
+    // fpr_div() shifts a 53-bit significand by at most 56 bits, so bit 108
+    // is the highest possible numerator bit. The fixed scan avoids hardware
+    // integer division, whose latency may depend on secret significands.
+    for bit in (0..109).rev() {
+        r = (r << 1) | ((num >> bit) & 1);
+        let ge = r >= den;
+        r = ct_select_u128(r, r.wrapping_sub(den), ge);
+        q = (q << 1) | u128::from(ge);
+    }
+    (q, r)
+}
+
 pub(crate) fn fpr_of(i: i64) -> Fpr {
     round_pack(i < 0, 0, abs_i64_to_u64(i))
 }
@@ -371,8 +386,7 @@ pub(crate) fn fpr_div(x: Fpr, y: Fpr) -> Fpr {
     let shift = ct_select_u32(55, 56, dx.sig < dy.sig);
     let num = (dx.sig as u128) << shift;
     let den = ct_select_u64(dy.sig, 1, dy.sig == 0) as u128;
-    let q = num / den;
-    let r = num % den;
+    let (q, r) = divrem_u128_ct(num, den);
     let sig_ext = (q as u64) | u64::from(r != 0);
     let result = round_pack(sign, dx.exp - dy.exp - shift as i32, sig_ext);
     let result = ct_select_fpr(result, Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS), dy.sig == 0);
@@ -477,6 +491,9 @@ mod tests {
         assert!(!src.contains(concat!("if shift ", ">= 64")));
         assert!(src.contains(concat!("ct_select_u32", "(49, 50")));
         assert!(src.contains(concat!("ct_select_u32", "(55, 56")));
+        assert!(src.contains("divrem_u128_ct"));
+        assert!(!src.contains(concat!("num ", "/ den")));
+        assert!(!src.contains(concat!("num ", "% den")));
 
         let production_end = src.find(concat!("#[", "cfg(test)]")).unwrap();
         let production = &src[..production_end];
@@ -484,6 +501,8 @@ mod tests {
         assert!(!production.contains(concat!("while", " ")));
         assert!(!production.contains(concat!("match", " ")));
         assert!(!production.contains(concat!("return", " ")));
+        assert!(!production.contains(" / "));
+        assert!(!production.contains(" % "));
     }
 
     #[test]
