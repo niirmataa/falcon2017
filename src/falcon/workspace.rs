@@ -107,6 +107,7 @@ pub struct SignCtWorkspace<const LOGN: u32> {
     pub(crate) hm: Vec<u16>,
     pub(crate) s1: Vec<i16>,
     pub(crate) s2: Vec<i16>,
+    pub(crate) s2_best: Vec<i16>,
     pub(crate) sign_tmp: Vec<SoftFpr>,
     pub(crate) nonce: Vec<u8>,
 }
@@ -118,6 +119,7 @@ impl<const LOGN: u32> SignCtWorkspace<LOGN> {
             hm: vec![0; n],
             s1: vec![0; n],
             s2: vec![0; n],
+            s2_best: vec![0; n],
             sign_tmp: vec![SoftFpr::from_bits(0); 6 * n],
             nonce: Vec::with_capacity(40),
         }
@@ -215,6 +217,7 @@ impl<const LOGN: u32> Drop for SignCtWorkspace<LOGN> {
         self.hm.as_mut_slice().zeroize();
         self.s1.as_mut_slice().zeroize();
         self.s2.as_mut_slice().zeroize();
+        self.s2_best.as_mut_slice().zeroize();
         zeroize_soft_fpr(&mut self.sign_tmp);
         self.nonce.as_mut_slice().zeroize();
     }

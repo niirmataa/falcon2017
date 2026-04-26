@@ -12,9 +12,16 @@ use crate::math::ntt::QB;
 use crate::params::{is_public_logn, DEFAULT_NONCE_LEN};
 use crate::rng::prng::{Prng, PRNG_CHACHA20};
 use crate::rng::shake256::ShakeContext;
-use crate::sampler::sign_ct_strict::sample_binary_ct;
+use crate::sampler::sign_ct_strict::sample_binary_ct_with_status;
 use crate::types::{DetachedSignature, ExpandedSecretKeyCt, Nonce};
 use rand_core::{CryptoRng, RngCore};
+
+const SIGN_CT_STRICT_ATTEMPTS: usize = 4;
+
+fn ct_select_i16(a: i16, b: i16, take_b: bool) -> i16 {
+    let mask = 0i16.wrapping_sub(i16::from(take_b));
+    a ^ ((a ^ b) & mask)
+}
 
 struct ExpandedSoftKey<'a> {
     logn: u32,
@@ -117,7 +124,7 @@ fn do_sign_binary_in(
     hm: &[u16],
     prng: &mut Prng,
     tmp: &mut [Fpr],
-) {
+) -> bool {
     let logn = sk.logn;
     let n = 1usize << logn;
     let tmp = &mut tmp[..6 * n];
@@ -138,8 +145,13 @@ fn do_sign_binary_in(
     poly_mul_fft(t0, sk.b11, logn);
     poly_mulconst(t0, ni, logn);
 
+    let mut sampling_ok = true;
     ffsampling_fft(
-        &mut |mu, sigma| sample_binary_ct(prng, mu, sigma),
+        &mut |mu, sigma| {
+            let (sample, ok) = sample_binary_ct_with_status(prng, mu, sigma);
+            sampling_ok &= ok;
+            sample
+        },
         (tx, ty),
         sk.tree,
         (t0, t1),
@@ -170,6 +182,7 @@ fn do_sign_binary_in(
         s1[u] = s1_value as i16;
         s2[u] = s2_value as i16;
     }
+    sampling_ok
 }
 
 pub(crate) fn sign_detached_with_rng_stream_in<const LOGN: u32>(
@@ -189,6 +202,7 @@ pub(crate) fn sign_detached_with_rng_stream_in<const LOGN: u32>(
         hm,
         s1,
         s2,
+        s2_best,
         sign_tmp,
         nonce: _,
     } = ws;
@@ -196,14 +210,24 @@ pub(crate) fn sign_detached_with_rng_stream_in<const LOGN: u32>(
     hash_message_to_point_binary_into(nonce.as_bytes(), msg, LOGN, &mut hm[..n]);
     let prepared = as_expanded_soft_key(expanded);
 
-    loop {
+    s2_best[..n].fill(0);
+    let mut found = false;
+    for _ in 0..SIGN_CT_STRICT_ATTEMPTS {
         let mut prng = Prng::new(rng_stream, PRNG_CHACHA20).ok_or(Error::Internal)?;
-        do_sign_binary_in(&mut s1[..n], &mut s2[..n], &prepared, &hm[..n], &mut prng, sign_tmp);
-        if is_short_binary(&s1[..n], &s2[..n], LOGN) {
-            let body = signature::encode(false, comp, LOGN, &s2[..n]).map_err(|_| Error::Internal)?;
-            return Ok(DetachedSignature { nonce, body });
+        let sampling_ok = do_sign_binary_in(&mut s1[..n], &mut s2[..n], &prepared, &hm[..n], &mut prng, sign_tmp);
+        let valid = sampling_ok & is_short_binary(&s1[..n], &s2[..n], LOGN);
+        let take = valid & !found;
+        for (dst, &src) in s2_best[..n].iter_mut().zip(s2[..n].iter()) {
+            *dst = ct_select_i16(*dst, src, take);
         }
+        found |= valid;
     }
+
+    if !found {
+        return Err(Error::Internal);
+    }
+    let body = signature::encode(false, comp, LOGN, &s2_best[..n]).map_err(|_| Error::Internal)?;
+    Ok(DetachedSignature { nonce, body })
 }
 
 pub(crate) fn sign_ct_strict<const LOGN: u32>(

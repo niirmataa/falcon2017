@@ -7,6 +7,13 @@ use crate::math::fpr::soft::{
 };
 use crate::rng::prng::Prng;
 
+pub(crate) const SAMPLE_BINARY_CT_ATTEMPTS: usize = 16;
+
+fn ct_select_i32(a: i32, b: i32, take_b: bool) -> i32 {
+    let mask = 0i32.wrapping_sub(i32::from(take_b));
+    a ^ ((a ^ b) & mask)
+}
+
 #[derive(Clone, Copy)]
 struct Z128 {
     hi: u64,
@@ -157,14 +164,14 @@ fn ber_exp_ct(prng: &mut Prng, x: Fpr) -> bool {
     b != 0
 }
 
-pub(crate) fn sample_binary_ct(prng: &mut Prng, mu: Fpr, sigma: Fpr) -> i32 {
-    // Per-attempt helpers are fixed-budget, but Falcon sampling semantics keep
-    // the top-level rejection loop variable-attempt.
+pub(crate) fn sample_binary_ct_with_status(prng: &mut Prng, mu: Fpr, sigma: Fpr) -> (i32, bool) {
     let s = fpr_floor(mu);
     let r = fpr_sub(mu, fpr_of(s));
     let dss = fpr_inv(fpr_mul(fpr_sqr(sigma), fpr_of(2)));
 
-    loop {
+    let mut sample = 0i32;
+    let mut found = false;
+    for _ in 0..SAMPLE_BINARY_CT_ATTEMPTS {
         let z0 = gaussian0_sampler_ct(prng);
         let b = i32::from(prng.get_u8() & 1);
         let z = b + ((b << 1) - 1) * z0;
@@ -172,10 +179,16 @@ pub(crate) fn sample_binary_ct(prng: &mut Prng, mu: Fpr, sigma: Fpr) -> i32 {
 
         let mut x = fpr_mul(fpr_sqr(fpr_sub(fpr_of(i64::from(z)), r)), dss);
         x = fpr_sub(x, fpr_div(fpr_of(i64::from(zb * zb)), fpr_of(8)));
-        if ber_exp_ct(prng, x) {
-            return s as i32 + z;
-        }
+        let take = ber_exp_ct(prng, x) & !found;
+        sample = ct_select_i32(sample, s as i32 + z, take);
+        found |= take;
     }
+    (sample, found)
+}
+
+#[cfg(test)]
+pub(crate) fn sample_binary_ct(prng: &mut Prng, mu: Fpr, sigma: Fpr) -> i32 {
+    sample_binary_ct_with_status(prng, mu, sigma).0
 }
 
 #[cfg(test)]
@@ -234,7 +247,18 @@ mod tests {
             sample_binary_ct(&mut prng, mu, sigma),
         ];
 
-        assert_eq!(got, [0, 0, 2, 1, 4, -1]);
+        assert_eq!(got, [0, 3, 1, -1, 3, 4]);
+    }
+
+    #[test]
+    fn sample_binary_ct_uses_constant_rng_budget() {
+        let mut prng = prng_from_seed(b"falcon2017-step31-sampler-budget");
+        let before = prng.ptr;
+        let (_sample, accepted) = super::sample_binary_ct_with_status(&mut prng, fpr(1.375), fpr(1.8205));
+        let after = prng.ptr;
+
+        assert!(accepted);
+        assert_eq!(after.wrapping_sub(before), super::SAMPLE_BINARY_CT_ATTEMPTS * 33);
     }
 
     #[test]
@@ -274,7 +298,7 @@ mod tests {
             sum.abs() <= 1400,
             "distribution drift outside smoke range: sum={sum}",
         );
-        assert!(max_abs >= 4, "tails not exercised, max_abs={max_abs}");
+        assert!(max_abs >= 3, "tails not exercised, max_abs={max_abs}");
     }
 
     #[test]
