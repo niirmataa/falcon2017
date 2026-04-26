@@ -126,6 +126,10 @@ fn round_shift_right_even_u64(x: u64, shift: u32) -> u64 {
     ct_select_u64(hi.wrapping_add(u64::from(inc)), 0, shift >= 64)
 }
 
+fn ct_max_i32_zero(x: i32) -> u32 {
+    (x & !(x >> 31)) as u32
+}
+
 fn decode(x: Fpr) -> Decoded {
     let sign = x.sign();
     let exp_bits = ((x.bits() & EXP_MASK) >> 52) as i32;
@@ -164,52 +168,37 @@ fn normalize53(mut d: Decoded) -> Decoded {
     d
 }
 
-fn round_pack(sign: bool, mut exp2: i32, mut sig_ext: u64) -> Fpr {
-    if sig_ext == 0 {
-        return FPR_ZERO;
-    }
+fn round_pack(sign: bool, exp2: i32, sig_ext: u64) -> Fpr {
+    let sign_bits = u64::from(sign) << 63;
+    let top = 63i32 - sig_ext.leading_zeros() as i32;
+    let delta = top - 55;
+    let right = ct_max_i32_zero(delta);
+    let left = ct_max_i32_zero(-delta);
+    let sig_right = shr_sticky_u64(sig_ext, right);
+    let sig_left = sig_ext << left;
+    let sig_norm = ct_select_u64(sig_left, sig_right, delta > 0);
+    let exp_norm = i64::from(exp2) + i64::from(delta);
+    let e = exp_norm + 55;
 
-    while sig_ext >= (1u64 << 56) {
-        sig_ext = shr_sticky_u64(sig_ext, 1);
-        exp2 += 1;
-    }
-    while sig_ext < (1u64 << 55) {
-        sig_ext <<= 1;
-        exp2 -= 1;
-    }
+    let mant0 = sig_norm >> 3;
+    let rem = sig_norm & 7;
+    let inc = (rem > 4) | ((rem == 4) & ((mant0 & 1) != 0));
+    let mant1 = mant0.wrapping_add(u64::from(inc));
+    let carry = mant1 >= (1u64 << 53);
+    let mant = ct_select_u64(mant1, mant1 >> 1, carry);
+    let e_rounded = e + i64::from(carry);
+    let normal_bits = sign_bits | (((e_rounded + 1023) as u64) << 52) | (mant & FRAC_MASK);
+    let inf_bits = sign_bits | POS_INF_BITS;
+    let normal_or_inf = ct_select_u64(normal_bits, inf_bits, e_rounded > 1023);
 
-    let mut e = exp2 + 55;
-    if e > 1023 {
-        return Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS);
-    }
+    let sub_shift = (-1074i64 - exp_norm) as u32;
+    let sub_frac = round_shift_right_even_u64(sig_norm, sub_shift);
+    let sub_payload = ct_select_u64(sub_frac, 1u64 << 52, sub_frac >= (1u64 << 52));
+    let sub_signed = sign_bits | sub_payload;
+    let sub_bits = ct_select_u64(POS_ZERO_BITS, sub_signed, sub_frac != 0);
 
-    if e >= -1022 {
-        let mut mant = sig_ext >> 3;
-        let rem = sig_ext & 7;
-        if rem > 4 || (rem == 4 && (mant & 1) != 0) {
-            mant += 1;
-        }
-        if mant >= (1u64 << 53) {
-            mant >>= 1;
-            e += 1;
-            if e > 1023 {
-                return Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS);
-            }
-        }
-        let frac = mant & FRAC_MASK;
-        let exp_bits = ((e + 1023) as u64) << 52;
-        return Fpr::from_bits((u64::from(sign) << 63) | exp_bits | frac);
-    }
-
-    let shift = (-1074 - exp2) as u32;
-    let frac = round_shift_right_even_u64(sig_ext, shift);
-    if frac == 0 {
-        return FPR_ZERO;
-    }
-    if frac >= (1u64 << 52) {
-        return Fpr::from_bits((u64::from(sign) << 63) | (1u64 << 52));
-    }
-    Fpr::from_bits((u64::from(sign) << 63) | frac)
+    let packed = ct_select_u64(sub_bits, normal_or_inf, e >= -1022);
+    Fpr::from_bits(ct_select_u64(packed, POS_ZERO_BITS, sig_ext == 0))
 }
 
 fn add_decoded(x: Decoded, y: Decoded) -> Fpr {
@@ -584,6 +573,13 @@ mod tests {
         assert!(!src.contains(concat!("if shift ", ">= 64")));
         assert!(src.contains(concat!("ct_select_u32", "(49, 50")));
         assert!(src.contains(concat!("ct_select_u32", "(55, 56")));
+
+        let start = src.find(concat!("fn ", "round_pack")).unwrap();
+        let end = start + src[start..].find(concat!("fn ", "add_decoded")).unwrap();
+        let body = &src[start..end];
+        assert!(!body.contains(concat!("if", " ")));
+        assert!(!body.contains(concat!("while", " ")));
+        assert!(!body.contains(concat!("return", " ")));
     }
 
     #[test]
