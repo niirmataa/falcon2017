@@ -117,21 +117,13 @@ fn shr_sticky_u128_in_range(x: u128, shift: u32) -> u128 {
 }
 
 fn round_shift_right_even_u64(x: u64, shift: u32) -> u64 {
-    if shift == 0 {
-        return x;
-    }
-    if shift >= 64 {
-        return 0;
-    }
-    let hi = x >> shift;
-    let mask = (1u64 << shift) - 1;
+    let s = shift & 63;
+    let hi = x >> s;
+    let mask = (1u64 << s).wrapping_sub(1);
     let lo = x & mask;
-    let half = 1u64 << (shift - 1);
-    if lo > half || (lo == half && (hi & 1) != 0) {
-        hi + 1
-    } else {
-        hi
-    }
+    let half = 1u64 << ((s.wrapping_sub(1)) & 63);
+    let inc = (lo > half) | ((lo == half) & ((hi & 1) != 0));
+    ct_select_u64(hi.wrapping_add(u64::from(inc)), 0, shift >= 64)
 }
 
 fn decode(x: Fpr) -> Decoded {
@@ -306,17 +298,15 @@ pub(crate) fn fpr_rint(x: Fpr) -> i64 {
     }
 
     let shift = (-d.exp) as u32;
-    if shift >= 64 {
-        return 0;
-    }
-    let int_part = d.sig >> shift;
-    let mask = (1u64 << shift) - 1;
-    let rem = d.sig & mask;
-    let half = 1u64 << (shift - 1);
-    let mut mag = int_part as u128;
-    if rem > half || (rem == half && (mag & 1) != 0) {
-        mag += 1;
-    }
+    let s = shift & 63;
+    let ge64 = shift >= 64;
+    let ge64_mask = ct_mask_u64(ge64);
+    let int_part = (d.sig >> s) & !ge64_mask;
+    let mask = (1u64 << s).wrapping_sub(1);
+    let rem = (d.sig & mask) & !ge64_mask;
+    let half = 1u64 << ((s.wrapping_sub(1)) & 63);
+    let inc = (rem > half) | ((rem == half) & ((int_part & 1) != 0));
+    let mag = int_part as u128 + u128::from(inc & !ge64);
 
     if d.sign {
         if mag >= (1u128 << 63) {
@@ -352,11 +342,10 @@ pub(crate) fn fpr_floor(x: Fpr) -> i64 {
     }
 
     let shift = (-d.exp) as u32;
-    if shift >= 64 {
-        return if d.sign { -1 } else { 0 };
-    }
-    let int_part = d.sig >> shift;
-    let mask = (1u64 << shift) - 1;
+    let s = shift & 63;
+    let ge64_mask = ct_mask_u64(shift >= 64);
+    let int_part = (d.sig >> s) & !ge64_mask;
+    let mask = ((1u64 << s).wrapping_sub(1)) | ge64_mask;
     let frac = d.sig & mask;
     let mag = int_part as u128 + u128::from(d.sign && frac != 0);
 
@@ -591,6 +580,8 @@ mod tests {
         assert!(!src.contains(concat!("fn ", "cmp_abs_decoded")));
         assert!(!src.contains(concat!("let shift = if pro", "d >=")));
         assert!(!src.contains(concat!("let shift = if dx.", "sig < dy.sig")));
+        assert!(!src.contains(concat!("if shift ", "== 0")));
+        assert!(!src.contains(concat!("if shift ", ">= 64")));
         assert!(src.contains(concat!("ct_select_u32", "(49, 50")));
         assert!(src.contains(concat!("ct_select_u32", "(55, 56")));
     }
