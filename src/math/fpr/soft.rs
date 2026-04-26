@@ -1,7 +1,5 @@
 //! Integer-only binary64 emulation for the strict constant-time backend.
 
-use core::cmp::Ordering;
-
 const SIGN_MASK: u64 = 1u64 << 63;
 const EXP_MASK: u64 = 0x7ff0_0000_0000_0000;
 const FRAC_MASK: u64 = 0x000f_ffff_ffff_ffff;
@@ -82,26 +80,36 @@ fn abs_i64_to_u64(i: i64) -> u64 {
     }
 }
 
-fn shr_sticky_u64(x: u64, shift: u32) -> u64 {
-    if shift == 0 {
-        return x;
-    }
-    if shift >= 64 {
-        return u64::from(x != 0);
-    }
-    let mask = (1u64 << shift) - 1;
-    let lost = x & mask;
-    let hi = x >> shift;
-    hi | u64::from(lost != 0)
+fn ct_mask_u64(take: bool) -> u64 {
+    0u64.wrapping_sub(u64::from(take))
 }
 
-fn shr_sticky_u128(x: u128, shift: u32) -> u128 {
-    if shift == 0 {
-        return x;
-    }
-    if shift >= 128 {
-        return u128::from(x != 0);
-    }
+fn ct_select_u64(a: u64, b: u64, take_b: bool) -> u64 {
+    a ^ ((a ^ b) & ct_mask_u64(take_b))
+}
+
+fn ct_select_u32(a: u32, b: u32, take_b: bool) -> u32 {
+    ct_select_u64(u64::from(a), u64::from(b), take_b) as u32
+}
+
+fn ct_select_i32(a: i32, b: i32, take_b: bool) -> i32 {
+    ct_select_u32(a as u32, b as u32, take_b) as i32
+}
+
+fn ct_select_fpr(a: Fpr, b: Fpr, take_b: bool) -> Fpr {
+    Fpr::from_bits(ct_select_u64(a.bits(), b.bits(), take_b))
+}
+
+fn shr_sticky_u64(x: u64, shift: u32) -> u64 {
+    let s = shift & 63;
+    let ge64 = ct_mask_u64(shift >= 64);
+    let mask = ((1u64 << s).wrapping_sub(1)) | ge64;
+    let hi = (x >> s) & !ge64;
+    hi | u64::from((x & mask) != 0)
+}
+
+fn shr_sticky_u128_in_range(x: u128, shift: u32) -> u128 {
+    debug_assert!((1..128).contains(&shift));
     let mask = (1u128 << shift) - 1;
     let lost = x & mask;
     let hi = x >> shift;
@@ -164,21 +172,6 @@ fn normalize53(mut d: Decoded) -> Decoded {
     d
 }
 
-fn cmp_abs_decoded(x: Decoded, y: Decoded) -> Ordering {
-    match (x.sig == 0, y.sig == 0) {
-        (true, true) => Ordering::Equal,
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        (false, false) => {
-            if x.exp != y.exp {
-                x.exp.cmp(&y.exp)
-            } else {
-                x.sig.cmp(&y.sig)
-            }
-        }
-    }
-}
-
 fn round_pack(sign: bool, mut exp2: i32, mut sig_ext: u64) -> Fpr {
     if sig_ext == 0 {
         return FPR_ZERO;
@@ -231,40 +224,34 @@ fn add_decoded(x: Decoded, y: Decoded) -> Fpr {
     let x = normalize53(x);
     let y = normalize53(y);
 
-    if x.sign == y.sign {
-        let mut sx = x.sig << 3;
-        let mut sy = y.sig << 3;
-        let mut exp2 = x.exp - 3;
-        if x.exp > y.exp {
-            sy = shr_sticky_u64(sy, (x.exp - y.exp) as u32);
-        } else if y.exp > x.exp {
-            sx = shr_sticky_u64(sx, (y.exp - x.exp) as u32);
-            exp2 = y.exp - 3;
-        }
-        round_pack(x.sign, exp2, sx + sy)
-    } else {
-        match cmp_abs_decoded(x, y) {
-            Ordering::Equal => FPR_ZERO,
-            Ordering::Greater => {
-                let sx = x.sig << 3;
-                let mut sy = y.sig << 3;
-                let exp2 = x.exp - 3;
-                if x.exp > y.exp {
-                    sy = shr_sticky_u64(sy, (x.exp - y.exp) as u32);
-                }
-                round_pack(x.sign, exp2, sx - sy)
-            }
-            Ordering::Less => {
-                let mut sx = x.sig << 3;
-                let sy = y.sig << 3;
-                let exp2 = y.exp - 3;
-                if y.exp > x.exp {
-                    sx = shr_sticky_u64(sx, (y.exp - x.exp) as u32);
-                }
-                round_pack(y.sign, exp2, sy - sx)
-            }
-        }
-    }
+    let sx = x.sig << 3;
+    let sy = y.sig << 3;
+    let x_exp_gt = x.exp > y.exp;
+    let y_exp_gt = y.exp > x.exp;
+    let exp_eq = x.exp == y.exp;
+    let exp_delta = i64::from(x.exp) - i64::from(y.exp);
+    let exp_diff = exp_delta.unsigned_abs() as u32;
+
+    let sx_to_y = shr_sticky_u64(sx, exp_diff);
+    let sy_to_x = shr_sticky_u64(sy, exp_diff);
+
+    let same_sx = ct_select_u64(sx, sx_to_y, y_exp_gt);
+    let same_sy = ct_select_u64(sy, sy_to_x, x_exp_gt);
+    let same_exp = ct_select_i32(x.exp - 3, y.exp - 3, y_exp_gt);
+    let same_sign = round_pack(x.sign, same_exp, same_sx + same_sy);
+
+    let x_nonzero = x.sig != 0;
+    let y_nonzero = y.sig != 0;
+    let x_abs_gt = x_nonzero & ((!y_nonzero) | x_exp_gt | (exp_eq & (x.sig > y.sig)));
+    let y_abs_gt = y_nonzero & ((!x_nonzero) | y_exp_gt | (exp_eq & (y.sig > x.sig)));
+    let abs_eq = !(x_abs_gt | y_abs_gt);
+
+    let x_minus_y = round_pack(x.sign, x.exp - 3, sx.wrapping_sub(sy_to_x));
+    let y_minus_x = round_pack(y.sign, y.exp - 3, sy.wrapping_sub(sx_to_y));
+    let diff_nonzero = ct_select_fpr(x_minus_y, y_minus_x, y_abs_gt);
+    let diff_sign = ct_select_fpr(diff_nonzero, FPR_ZERO, abs_eq);
+
+    ct_select_fpr(diff_sign, same_sign, x.sign == y.sign)
 }
 
 fn isqrt_u128(n: u128) -> u128 {
@@ -459,8 +446,8 @@ pub(crate) fn fpr_mul(x: Fpr, y: Fpr) -> Fpr {
     }
 
     let prod = (dx.sig as u128) * (dy.sig as u128);
-    let shift = if prod >= (1u128 << 105) { 50 } else { 49 };
-    let sig_ext = shr_sticky_u128(prod, shift) as u64;
+    let shift = ct_select_u32(49, 50, prod >= (1u128 << 105));
+    let sig_ext = shr_sticky_u128_in_range(prod, shift) as u64;
     round_pack(sign, dx.exp + dy.exp + shift as i32, sig_ext)
 }
 
@@ -486,14 +473,11 @@ pub(crate) fn fpr_div(x: Fpr, y: Fpr) -> Fpr {
     // Produce a 56-bit extended significand directly in the range expected by
     // round_pack(): [2^55, 2^56). This preserves the exact quotient scale and
     // leaves the low bits of q available as round/sticky bits.
-    let shift = if dx.sig < dy.sig { 56 } else { 55 };
+    let shift = ct_select_u32(55, 56, dx.sig < dy.sig);
     let num = (dx.sig as u128) << shift;
     let q = num / (dy.sig as u128);
     let r = num % (dy.sig as u128);
-    let mut sig_ext = q as u64;
-    if r != 0 {
-        sig_ext |= 1;
-    }
+    let sig_ext = (q as u64) | u64::from(r != 0);
     round_pack(sign, dx.exp - dy.exp - shift as i32, sig_ext)
 }
 
@@ -532,18 +516,26 @@ pub(crate) fn fpr_max(x: Fpr, y: Fpr) -> Fpr {
 }
 
 pub(crate) fn fpr_lt(x: Fpr, y: Fpr) -> bool {
-    if x.is_zero() && y.is_zero() {
-        return false;
-    }
-    if x.sign() != y.sign() {
-        return x.sign();
-    }
-    let ord = cmp_abs_decoded(normalize53(decode(x)), normalize53(decode(y)));
-    if x.sign() {
-        ord == Ordering::Greater
-    } else {
-        ord == Ordering::Less
-    }
+    let x_zero = x.is_zero();
+    let y_zero = y.is_zero();
+    let both_zero = x_zero & y_zero;
+    let x_sign = x.sign();
+    let y_sign = y.sign();
+    let sign_diff = x_sign ^ y_sign;
+
+    let dx = normalize53(decode(x));
+    let dy = normalize53(decode(y));
+    let x_nonzero = dx.sig != 0;
+    let y_nonzero = dy.sig != 0;
+    let x_exp_gt = dx.exp > dy.exp;
+    let y_exp_gt = dy.exp > dx.exp;
+    let exp_eq = dx.exp == dy.exp;
+    let x_abs_gt = x_nonzero & ((!y_nonzero) | x_exp_gt | (exp_eq & (dx.sig > dy.sig)));
+    let y_abs_gt = y_nonzero & ((!x_nonzero) | y_exp_gt | (exp_eq & (dy.sig > dx.sig)));
+
+    let same_sign_lt = (x_sign & x_abs_gt) | ((!x_sign) & y_abs_gt);
+    let sign_diff_lt = x_sign;
+    ((!both_zero) & sign_diff & sign_diff_lt) | ((!both_zero) & (!sign_diff) & same_sign_lt)
 }
 
 pub(crate) fn fpr_exp_small(x: Fpr) -> Fpr {
@@ -591,6 +583,16 @@ mod tests {
 
     fn from_f64(x: f64) -> Fpr {
         Fpr::from_bits(x.to_bits())
+    }
+
+    #[test]
+    fn reviewed_branch_patterns_stay_removed() {
+        let src = include_str!("soft.rs");
+        assert!(!src.contains(concat!("fn ", "cmp_abs_decoded")));
+        assert!(!src.contains(concat!("let shift = if pro", "d >=")));
+        assert!(!src.contains(concat!("let shift = if dx.", "sig < dy.sig")));
+        assert!(src.contains(concat!("ct_select_u32", "(49, 50")));
+        assert!(src.contains(concat!("ct_select_u32", "(55, 56")));
     }
 
     #[test]
