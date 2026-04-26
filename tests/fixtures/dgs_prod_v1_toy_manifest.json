@@ -1,0 +1,42 @@
+{
+  "schema": "falcon2017.dgs_prod_v1.table_manifest.v1",
+  "table_id": "dgs-prod-v1:payload-sha256:60effabcc59e29589e99bbbfdb539474e5683d96ec0f89d4c41445d8eb6ecbfb",
+  "payload": {
+    "profile": "DGS_PROD_V1",
+    "den_bits": 256,
+    "threshold_bits": 256,
+    "threshold_words": 4,
+    "bucket_count": 3,
+    "threshold_count": 2,
+    "bucket_order": "signed_centered",
+    "support_min": -1,
+    "support_max": 1,
+    "sigma": {
+      "id": "toy-sigma-1",
+      "decimal": "1.000000000000000000"
+    },
+    "thresholds_hex_be": [
+      "4000000000000000000000000000000000000000000000000000000000000000",
+      "8000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  "certificate": {
+    "status": "fixture-not-production",
+    "purpose": "Schema and checker fixture only; not a Gaussian table and not usable for signing claims.",
+    "thresholds_sha256": "e8bc0d236fe144c8206126bddfb05c3a40918172c6d3047096bc9de703252e40",
+    "generator": {
+      "authority": "fixture",
+      "source_commit": "none",
+      "precision_bits": 0
+    },
+    "checker": {
+      "authority": "scripts/check_dgs_table_manifest.py",
+      "source_commit": "none"
+    },
+    "bounds": {
+      "tail_per_draw_bits_min": 0,
+      "quant_per_draw_bits_min": 255,
+      "runtime_error": "0"
+    }
+  }
+}

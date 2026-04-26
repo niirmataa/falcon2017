@@ -51,7 +51,7 @@ Each static table describes a complete finite output bucket set of size `n`.
 The table stores `n - 1` cumulative thresholds:
 
 ```text
-0 < T_0 <= T_1 <= ... <= T_{n-2} < S
+0 < T_0 < T_1 < ... < T_{n-2} < S
 S = 2^256
 ```
 
@@ -67,6 +67,10 @@ value = words[0] + 2^64*words[1] + 2^128*words[2] + 2^192*words[3]
 
 Generated table files should also include a canonical 32-byte big-endian hex
 encoding for review, but runtime code must consume only checked static arrays.
+
+The canonical manifest format is frozen separately in
+`docs/dgs_table_manifest_v1.md`. Checked-in tables must pass
+`scripts/check_dgs_table_manifest.py` before any Rust table is generated.
 
 ## Tail Bound
 
@@ -197,7 +201,7 @@ The primary generator must emit:
 The checker must independently verify:
 
 - monotonic thresholds;
-- `0 < T_0 <= ... <= T_{n-2} < 2^256`;
+- `0 < T_0 < ... < T_{n-2} < 2^256`;
 - bucket count `n <= 1024`;
 - all rounded thresholds are inside the certified rounding intervals;
 - per-table tail bound;
