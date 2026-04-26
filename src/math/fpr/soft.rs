@@ -73,11 +73,9 @@ const FPR_P4: Fpr = Fpr::from_bits(P4_BITS);
 const FPR_P5: Fpr = Fpr::from_bits(P5_BITS);
 
 fn abs_i64_to_u64(i: i64) -> u64 {
-    if i < 0 {
-        (i as u64).wrapping_neg()
-    } else {
-        i as u64
-    }
+    let x = i as u64;
+    let mask = (i >> 63) as u64;
+    (x ^ mask).wrapping_sub(mask)
 }
 
 fn ct_mask_u64(take: bool) -> u64 {
@@ -88,6 +86,11 @@ fn ct_select_u64(a: u64, b: u64, take_b: bool) -> u64 {
     a ^ ((a ^ b) & ct_mask_u64(take_b))
 }
 
+fn ct_select_u128(a: u128, b: u128, take_b: bool) -> u128 {
+    let mask = 0u128.wrapping_sub(u128::from(take_b));
+    a ^ ((a ^ b) & mask)
+}
+
 fn ct_select_u32(a: u32, b: u32, take_b: bool) -> u32 {
     ct_select_u64(u64::from(a), u64::from(b), take_b) as u32
 }
@@ -96,8 +99,18 @@ fn ct_select_i32(a: i32, b: i32, take_b: bool) -> i32 {
     ct_select_u32(a as u32, b as u32, take_b) as i32
 }
 
+fn ct_select_i64(a: i64, b: i64, take_b: bool) -> i64 {
+    ct_select_u64(a as u64, b as u64, take_b) as i64
+}
+
 fn ct_select_fpr(a: Fpr, b: Fpr, take_b: bool) -> Fpr {
     Fpr::from_bits(ct_select_u64(a.bits(), b.bits(), take_b))
+}
+
+fn i64_from_mag_sat(sign: bool, mag: u128) -> i64 {
+    let pos = ct_select_i64(mag as i64, i64::MAX, mag > i64::MAX as u128);
+    let neg = ct_select_i64((mag as u64).wrapping_neg() as i64, i64::MIN, mag >= (1u128 << 63));
+    ct_select_i64(pos, neg, sign)
 }
 
 fn shr_sticky_u64(x: u64, shift: u32) -> u64 {
@@ -134,38 +147,24 @@ fn decode(x: Fpr) -> Decoded {
     let sign = x.sign();
     let exp_bits = ((x.bits() & EXP_MASK) >> 52) as i32;
     let frac = x.bits() & FRAC_MASK;
-    if exp_bits == 0 {
-        if frac == 0 {
-            Decoded {
-                sign,
-                sig: 0,
-                exp: 0,
-            }
-        } else {
-            Decoded {
-                sign,
-                sig: frac,
-                exp: -1074,
-            }
-        }
-    } else {
-        Decoded {
-            sign,
-            sig: (1u64 << 52) | frac,
-            exp: exp_bits - 1075,
-        }
+    let normal = exp_bits != 0;
+    let subnormal = (!normal) & (frac != 0);
+    Decoded {
+        sign,
+        sig: ct_select_u64(frac, (1u64 << 52) | frac, normal),
+        exp: ct_select_i32(ct_select_i32(0, -1074, subnormal), exp_bits - 1075, normal),
     }
 }
 
-fn normalize53(mut d: Decoded) -> Decoded {
-    if d.sig == 0 {
-        return d;
-    }
+fn normalize53(d: Decoded) -> Decoded {
+    let nonzero = d.sig != 0;
     let top = 63 - d.sig.leading_zeros() as i32;
-    let shift = 52 - top;
-    d.sig <<= shift as u32;
-    d.exp -= shift;
-    d
+    let shift = (52 - top) as u32;
+    Decoded {
+        sign: d.sign,
+        sig: d.sig << shift,
+        exp: ct_select_i32(d.exp, d.exp - shift as i32, nonzero),
+    }
 }
 
 fn round_pack(sign: bool, exp2: i32, sig_ext: u64) -> Fpr {
@@ -239,16 +238,11 @@ fn isqrt_u128(n: u128) -> u128 {
     let mut op = n;
     let mut res = 0u128;
     let mut one = 1u128 << 126;
-    while one > op {
-        one >>= 2;
-    }
-    while one != 0 {
-        if op >= res + one {
-            op -= res + one;
-            res = (res >> 1) + one;
-        } else {
-            res >>= 1;
-        }
+    for _ in 0..64 {
+        let trial = res + one;
+        let take = op >= trial;
+        op = ct_select_u128(op, op.wrapping_sub(trial), take);
+        res = ct_select_u128(res >> 1, (res >> 1) + one, take);
         one >>= 2;
     }
     res
@@ -268,25 +262,12 @@ pub(crate) fn fpr_inverse_of(i: i64) -> Fpr {
 
 pub(crate) fn fpr_rint(x: Fpr) -> i64 {
     let d = decode(x);
-    if d.sig == 0 {
-        return 0;
-    }
-    if d.exp >= 0 {
-        let mag = (d.sig as u128) << d.exp as u32;
-        return if d.sign {
-            if mag >= (1u128 << 63) {
-                i64::MIN
-            } else {
-                -(mag as i64)
-            }
-        } else if mag > i64::MAX as u128 {
-            i64::MAX
-        } else {
-            mag as i64
-        };
-    }
+    let exp_nonneg = d.exp >= 0;
 
-    let shift = (-d.exp) as u32;
+    let pos_shift = (d.exp as u32) & 127;
+    let pos_mag = ct_select_u128((d.sig as u128) << pos_shift, u128::MAX, d.exp >= 128);
+
+    let shift = d.exp.wrapping_neg() as u32;
     let s = shift & 63;
     let ge64 = shift >= 64;
     let ge64_mask = ct_mask_u64(ge64);
@@ -295,104 +276,55 @@ pub(crate) fn fpr_rint(x: Fpr) -> i64 {
     let rem = (d.sig & mask) & !ge64_mask;
     let half = 1u64 << ((s.wrapping_sub(1)) & 63);
     let inc = (rem > half) | ((rem == half) & ((int_part & 1) != 0));
-    let mag = int_part as u128 + u128::from(inc & !ge64);
+    let neg_mag = int_part as u128 + u128::from(inc & !ge64);
 
-    if d.sign {
-        if mag >= (1u128 << 63) {
-            i64::MIN
-        } else {
-            -(mag as i64)
-        }
-    } else if mag > i64::MAX as u128 {
-        i64::MAX
-    } else {
-        mag as i64
-    }
+    i64_from_mag_sat(d.sign, ct_select_u128(neg_mag, pos_mag, exp_nonneg))
 }
 
 pub(crate) fn fpr_floor(x: Fpr) -> i64 {
     let d = decode(x);
-    if d.sig == 0 {
-        return 0;
-    }
-    if d.exp >= 0 {
-        let mag = (d.sig as u128) << d.exp as u32;
-        return if d.sign {
-            if mag >= (1u128 << 63) {
-                i64::MIN
-            } else {
-                -(mag as i64)
-            }
-        } else if mag > i64::MAX as u128 {
-            i64::MAX
-        } else {
-            mag as i64
-        };
-    }
+    let exp_nonneg = d.exp >= 0;
 
-    let shift = (-d.exp) as u32;
+    let pos_shift = (d.exp as u32) & 127;
+    let pos_mag = ct_select_u128((d.sig as u128) << pos_shift, u128::MAX, d.exp >= 128);
+
+    let shift = d.exp.wrapping_neg() as u32;
     let s = shift & 63;
     let ge64_mask = ct_mask_u64(shift >= 64);
     let int_part = (d.sig >> s) & !ge64_mask;
     let mask = ((1u64 << s).wrapping_sub(1)) | ge64_mask;
     let frac = d.sig & mask;
-    let mag = int_part as u128 + u128::from(d.sign && frac != 0);
+    let neg_mag = int_part as u128 + u128::from(d.sign && frac != 0);
 
-    if d.sign {
-        if mag >= (1u128 << 63) {
-            i64::MIN
-        } else {
-            -(mag as i64)
-        }
-    } else if mag > i64::MAX as u128 {
-        i64::MAX
-    } else {
-        mag as i64
-    }
+    i64_from_mag_sat(d.sign, ct_select_u128(neg_mag, pos_mag, exp_nonneg))
 }
 
 pub(crate) fn fpr_add(x: Fpr, y: Fpr) -> Fpr {
-    if x.is_zero() && y.is_zero() {
-        return if x.sign() && y.sign() {
-            Fpr::from_bits(SIGN_MASK)
-        } else {
-            FPR_ZERO
-        };
-    }
     let dx = decode(x);
     let dy = decode(y);
-    if dx.sig == 0 {
-        return y;
-    }
-    if dy.sig == 0 {
-        return x;
-    }
-    add_decoded(dx, dy)
+    let both_zero = x.is_zero() && y.is_zero();
+    let both_zero_result = Fpr::from_bits(ct_select_u64(POS_ZERO_BITS, SIGN_MASK, x.sign() && y.sign()));
+    let result = ct_select_fpr(add_decoded(dx, dy), y, dx.sig == 0);
+    let result = ct_select_fpr(result, x, dy.sig == 0);
+    ct_select_fpr(result, both_zero_result, both_zero)
 }
 
 pub(crate) fn fpr_sub(x: Fpr, y: Fpr) -> Fpr {
-    if x.is_zero() && y.is_zero() {
-        return if x.sign() && !y.sign() {
-            Fpr::from_bits(SIGN_MASK)
-        } else {
-            FPR_ZERO
-        };
-    }
     let dx = decode(x);
     let dy = decode(y);
-    if dx.sig == 0 {
-        return fpr_neg(y);
-    }
-    if dy.sig == 0 {
-        return x;
-    }
-    add_decoded(
+    let neg_y = fpr_neg(y);
+    let both_zero = x.is_zero() && y.is_zero();
+    let both_zero_result = Fpr::from_bits(ct_select_u64(POS_ZERO_BITS, SIGN_MASK, x.sign() && !y.sign()));
+    let result = add_decoded(
         dx,
         Decoded {
             sign: !dy.sign,
             ..dy
         },
-    )
+    );
+    let result = ct_select_fpr(result, neg_y, dx.sig == 0);
+    let result = ct_select_fpr(result, x, dy.sig == 0);
+    ct_select_fpr(result, both_zero_result, both_zero)
 }
 
 pub(crate) fn fpr_neg(x: Fpr) -> Fpr {
@@ -401,32 +333,23 @@ pub(crate) fn fpr_neg(x: Fpr) -> Fpr {
 
 pub(crate) fn fpr_half(x: Fpr) -> Fpr {
     let d = decode(x);
-    if d.sig == 0 {
-        return x;
-    }
-    round_pack(d.sign, d.exp - 1, d.sig)
+    ct_select_fpr(round_pack(d.sign, d.exp - 1, d.sig), x, d.sig == 0)
 }
 
 pub(crate) fn fpr_double(x: Fpr) -> Fpr {
     let d = decode(x);
-    if d.sig == 0 {
-        return x;
-    }
-    round_pack(d.sign, d.exp + 1, d.sig)
+    ct_select_fpr(round_pack(d.sign, d.exp + 1, d.sig), x, d.sig == 0)
 }
 
 pub(crate) fn fpr_mul(x: Fpr, y: Fpr) -> Fpr {
     let dx = normalize53(decode(x));
     let dy = normalize53(decode(y));
     let sign = dx.sign ^ dy.sign;
-    if dx.sig == 0 || dy.sig == 0 {
-        return Fpr::from_bits(u64::from(sign) << 63);
-    }
-
     let prod = (dx.sig as u128) * (dy.sig as u128);
     let shift = ct_select_u32(49, 50, prod >= (1u128 << 105));
     let sig_ext = shr_sticky_u128_in_range(prod, shift) as u64;
-    round_pack(sign, dx.exp + dy.exp + shift as i32, sig_ext)
+    let result = round_pack(sign, dx.exp + dy.exp + shift as i32, sig_ext);
+    ct_select_fpr(result, Fpr::from_bits(u64::from(sign) << 63), (dx.sig == 0) || (dy.sig == 0))
 }
 
 pub(crate) fn fpr_sqr(x: Fpr) -> Fpr {
@@ -441,56 +364,37 @@ pub(crate) fn fpr_div(x: Fpr, y: Fpr) -> Fpr {
     let dx = normalize53(decode(x));
     let dy = normalize53(decode(y));
     let sign = dx.sign ^ dy.sign;
-    if dx.sig == 0 {
-        return Fpr::from_bits(u64::from(sign) << 63);
-    }
-    if dy.sig == 0 {
-        return Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS);
-    }
 
     // Produce a 56-bit extended significand directly in the range expected by
     // round_pack(): [2^55, 2^56). This preserves the exact quotient scale and
     // leaves the low bits of q available as round/sticky bits.
     let shift = ct_select_u32(55, 56, dx.sig < dy.sig);
     let num = (dx.sig as u128) << shift;
-    let q = num / (dy.sig as u128);
-    let r = num % (dy.sig as u128);
+    let den = ct_select_u64(dy.sig, 1, dy.sig == 0) as u128;
+    let q = num / den;
+    let r = num % den;
     let sig_ext = (q as u64) | u64::from(r != 0);
-    round_pack(sign, dx.exp - dy.exp - shift as i32, sig_ext)
+    let result = round_pack(sign, dx.exp - dy.exp - shift as i32, sig_ext);
+    let result = ct_select_fpr(result, Fpr::from_bits((u64::from(sign) << 63) | POS_INF_BITS), dy.sig == 0);
+    ct_select_fpr(result, Fpr::from_bits(u64::from(sign) << 63), dx.sig == 0)
 }
 
 pub(crate) fn fpr_sqrt(x: Fpr) -> Fpr {
     let dx = normalize53(decode(x));
-    if dx.sig == 0 {
-        return x;
-    }
-    if dx.sign {
-        return FPR_ZERO;
-    }
-
-    let mut sig = dx.sig;
-    let mut exp = dx.exp;
-    if (exp & 1) != 0 {
-        sig <<= 1;
-        exp -= 1;
-    }
-
+    let odd_exp = (dx.exp & 1) != 0;
+    let sig = ct_select_u64(dx.sig, dx.sig << 1, odd_exp);
+    let exp = ct_select_i32(dx.exp, dx.exp - 1, odd_exp);
     let num = (sig as u128) << 58;
-    let mut root = isqrt_u128(num);
-    if root * root != num {
-        root |= 1;
-    }
-    round_pack(false, (exp >> 1) - 29, root as u64)
+    let root0 = isqrt_u128(num);
+    let root = root0 | u128::from(root0 * root0 != num);
+    let result = round_pack(false, (exp >> 1) - 29, root as u64);
+    let result = ct_select_fpr(result, FPR_ZERO, dx.sign);
+    ct_select_fpr(result, x, dx.sig == 0)
 }
 
 pub(crate) fn fpr_max(x: Fpr, y: Fpr) -> Fpr {
-    if x.is_zero() && y.is_zero() {
-        FPR_ZERO
-    } else if fpr_lt(x, y) {
-        y
-    } else {
-        x
-    }
+    let result = ct_select_fpr(x, y, fpr_lt(x, y));
+    ct_select_fpr(result, FPR_ZERO, x.is_zero() && y.is_zero())
 }
 
 pub(crate) fn fpr_lt(x: Fpr, y: Fpr) -> bool {
@@ -574,12 +478,12 @@ mod tests {
         assert!(src.contains(concat!("ct_select_u32", "(49, 50")));
         assert!(src.contains(concat!("ct_select_u32", "(55, 56")));
 
-        let start = src.find(concat!("fn ", "round_pack")).unwrap();
-        let end = start + src[start..].find(concat!("fn ", "add_decoded")).unwrap();
-        let body = &src[start..end];
-        assert!(!body.contains(concat!("if", " ")));
-        assert!(!body.contains(concat!("while", " ")));
-        assert!(!body.contains(concat!("return", " ")));
+        let production_end = src.find(concat!("#[", "cfg(test)]")).unwrap();
+        let production = &src[..production_end];
+        assert!(!production.contains(concat!("if", " ")));
+        assert!(!production.contains(concat!("while", " ")));
+        assert!(!production.contains(concat!("match", " ")));
+        assert!(!production.contains(concat!("return", " ")));
     }
 
     #[test]
